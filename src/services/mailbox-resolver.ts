@@ -28,16 +28,28 @@ export interface MailboxItem {
  */
 export function resolveSpecialMailbox(
   logicalAlias: string,
-  availableMailboxes: MailboxItem[]
+  availableMailboxes: Array<MailboxItem | string> = []
 ): string {
   const normalized = (logicalAlias || "").trim().toLowerCase();
 
+  // 统一规整为 MailboxItem 标准模型
+  const items: MailboxItem[] = availableMailboxes.map((m) => {
+    if (typeof m === "string") {
+      return { path: m, name: m };
+    }
+    return {
+      path: m.path || "",
+      name: m.name,
+      specialUse: m.specialUse,
+    };
+  });
+
   // 1. 收件箱 (INBOX) 别名映射
   if (normalized === "inbox" || normalized === "收件箱") {
-    const found = availableMailboxes.find(
+    const found = items.find(
       (m) =>
         m.specialUse?.toLowerCase() === "\\inbox" ||
-        m.path.toUpperCase() === "INBOX" ||
+        m.path?.toUpperCase() === "INBOX" ||
         m.name?.toUpperCase() === "INBOX"
     );
     return found ? found.path : "INBOX";
@@ -50,14 +62,14 @@ export function resolveSpecialMailbox(
     normalized === "草稿箱" ||
     normalized === "草稿"
   ) {
-    const bySpecialUse = availableMailboxes.find(
+    const bySpecialUse = items.find(
       (m) => m.specialUse?.toLowerCase() === "\\drafts"
     );
     if (bySpecialUse) {
       return bySpecialUse.path;
     }
 
-    const byName = availableMailboxes.find((m) => {
+    const byName = items.find((m) => {
       const p = m.path.toLowerCase();
       const n = (m.name || "").toLowerCase();
       return (
@@ -84,14 +96,14 @@ export function resolveSpecialMailbox(
     normalized === "回收站" ||
     normalized === "废件箱"
   ) {
-    const bySpecialUse = availableMailboxes.find(
+    const bySpecialUse = items.find(
       (m) => m.specialUse?.toLowerCase() === "\\trash"
     );
     if (bySpecialUse) {
       return bySpecialUse.path;
     }
 
-    const byName = availableMailboxes.find((m) => {
+    const byName = items.find((m) => {
       const p = m.path.toLowerCase();
       const n = (m.name || "").toLowerCase();
       return (
@@ -118,14 +130,14 @@ export function resolveSpecialMailbox(
     normalized === "已发送" ||
     normalized === "sent messages"
   ) {
-    const bySpecialUse = availableMailboxes.find(
+    const bySpecialUse = items.find(
       (m) => m.specialUse?.toLowerCase() === "\\sent"
     );
     if (bySpecialUse) {
       return bySpecialUse.path;
     }
 
-    const byName = availableMailboxes.find((m) => {
+    const byName = items.find((m) => {
       const p = m.path.toLowerCase();
       const n = (m.name || "").toLowerCase();
       return (
@@ -146,7 +158,7 @@ export function resolveSpecialMailbox(
   }
 
   // 5. 尝试精确与不区分大小写匹配物理路径
-  const exactMatch = availableMailboxes.find(
+  const exactMatch = items.find(
     (m) =>
       m.path.toLowerCase() === normalized ||
       (m.name && m.name.toLowerCase() === normalized)

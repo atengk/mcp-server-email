@@ -404,4 +404,46 @@ export function registerEmailTools(server: McpServer): void {
       }
     }
   );
+
+  // 9. 下载附件至本地受管沙箱工具
+  server.tool(
+    "download_attachment",
+    "将指定邮件的附件按需提取并安全保存至本地受管沙箱目录，返回物理绝对路径与 file:/// 直达 URI",
+    {
+      account: z.string().optional().describe("邮箱账户画像标识，缺省时使用默认账户"),
+      uid: z.number().describe("邮件的唯一 UID 标识符"),
+      attachmentId: z
+        .string()
+        .describe("待下载附件的标识 ID（对应 get_email_detail 返回的附件 id，如 '0'）或附件文件名"),
+      mailbox: z
+        .string()
+        .optional()
+        .default("INBOX")
+        .describe("原邮件所在邮箱文件夹名称或别名，默认为 INBOX"),
+    },
+    async (args) => {
+      try {
+        const imapService = accountManager.getImapService(args.account);
+        const result = await imapService.downloadAttachment(
+          args.uid,
+          args.attachmentId,
+          args.mailbox
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          isError: true,
+          content: [{ type: "text", text: `下载附件失败: ${message}` }],
+        };
+      }
+    }
+  );
 }

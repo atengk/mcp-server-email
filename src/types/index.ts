@@ -63,6 +63,20 @@ export interface EmailSummary {
 }
 
 /**
+ * 邮件附件元数据清单（不含原始二进制与大体积 Base64，保护 Token 经济性）
+ */
+export interface EmailAttachmentMetadata {
+  /** 附件在邮件中的唯一标识 ID 或序号（如 "0", "1"） */
+  id: string;
+  /** 附件名称 */
+  filename: string;
+  /** 内容类型 (MIME Type) */
+  contentType: string;
+  /** 文件大小（字节） */
+  size: number;
+}
+
+/**
  * 邮件详情数据
  */
 export interface EmailDetail {
@@ -84,21 +98,36 @@ export interface EmailDetail {
   text?: string;
   /** HTML 格式正文 */
   html?: string;
+  /** 清洗提纯后的 Markdown 正文 */
+  bodyMarkdown?: string;
+  /** 邮件正文是否因超过 30KB 阈值触发截断 */
+  truncated?: boolean;
   /** 全局唯一 Message-ID (RFC 822) */
   messageId?: string;
   /** 关联上级 Message-ID */
   inReplyTo?: string;
   /** 会话线程引用链条 */
   references?: string[];
-  /** 附件元数据清单 */
-  attachments: Array<{
-    /** 附件名称 */
-    filename: string;
-    /** 文件类型 */
-    contentType: string;
-    /** 文件大小（字节） */
-    size: number;
-  }>;
+  /** 附件元数据清单（不含二进制数据） */
+  attachments: EmailAttachmentMetadata[];
+}
+
+/**
+ * 附件下载落盘结果
+ */
+export interface DownloadAttachmentResult {
+  /** 附件在邮件中的唯一标识 ID 或序号 */
+  attachmentId: string;
+  /** 附件文件名 */
+  filename: string;
+  /** MIME 内容类型 */
+  contentType: string;
+  /** 附件文件字节大小 */
+  size: number;
+  /** 本地受管沙箱物理绝对路径 */
+  filePath: string;
+  /** 本地沙箱文件直达 URI (file://...) */
+  fileUrl: string;
 }
 
 /**

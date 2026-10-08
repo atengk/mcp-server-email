@@ -8,6 +8,8 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { config } from "../config/index.js";
 import type {
+  DownloadAttachmentResult,
+  EmailAttachmentMetadata,
   EmailDetail,
   EmailSummary,
   ImapConfig,
@@ -23,6 +25,9 @@ import {
   parseBodyFromRawOrParts,
   resolveSpecialMailbox,
 } from "./mailbox-resolver.js";
+import { purifyEmailBody } from "./content-purifier.js";
+import { saveAttachmentToSandbox } from "./attachment-sandbox.js";
+
 
 
 
@@ -211,10 +216,10 @@ export class ImapService {
   }
 
   /**
-   * 根据 UID 获取邮件正文及附件明细
+   * 根据 UID 获取邮件正文及附件明细（包含 Markdown 提纯与附件元数据清单）
    *
    * @param uid 邮件唯一标识符
-   * @param mailbox 所处邮箱，默认 INBOX
+   * @param mailbox 所处邮箱文件夹或别名，默认 INBOX
    * @returns 邮件详情数据
    */
   async getEmailDetail(uid: number, mailbox = "INBOX"): Promise<EmailDetail> {
@@ -222,7 +227,10 @@ export class ImapService {
     await client.connect();
 
     try {
-      const lock = await client.getMailboxLock(mailbox);
+      const mailboxes = await client.list();
+      const targetMailbox = resolveSpecialMailbox(mailbox, mailboxes);
+
+      const lock = await client.getMailboxLock(targetMailbox);
       try {
         const download = await client.download(String(uid), undefined, { uid: true });
         if (!download || !download.content) {
@@ -249,10 +257,12 @@ export class ImapService {
           }
         }
 
-        const attachments = (parsed.attachments || []).map((att) => ({
-          filename: att.filename || "未命名附件",
-          contentType: att.contentType,
-          size: att.size,
+        // 仅提取轻量元数据清单，严禁嵌入大体积 Base64，保护 Token 经济性
+        const attachments: EmailAttachmentMetadata[] = (parsed.attachments || []).map((att, idx) => ({
+          id: String(idx),
+          filename: att.filename || `attachment-${idx}`,
+          contentType: att.contentType || "application/octet-stream",
+          size: att.size || (att.content ? att.content.length : 0),
         }));
 
         const fromAddress = parsed.from?.value?.[0]?.address || undefined;
@@ -262,6 +272,12 @@ export class ImapService {
             ? parsed.references
             : [parsed.references];
         }
+
+        // 清洗提纯 HTML 为轻量 Markdown，执行 30KB 安全截断
+        const purified = purifyEmailBody(
+          parsed.text,
+          typeof parsed.html === "string" ? parsed.html : undefined
+        );
 
         return {
           uid,
@@ -273,12 +289,84 @@ export class ImapService {
           date: parsed.date ? parsed.date.toISOString() : new Date().toISOString(),
           text: parsed.text,
           html: typeof parsed.html === "string" ? parsed.html : undefined,
+          bodyMarkdown: purified.content,
+          truncated: purified.truncated,
           messageId: parsed.messageId,
           inReplyTo: parsed.inReplyTo,
           references,
           attachments,
         };
 
+      } finally {
+        lock.release();
+      }
+    } finally {
+      await client.logout().catch(() => {});
+    }
+  }
+
+  /**
+   * 从指定邮件中提取附件并下载保存至受管本地沙箱
+   *
+   * @param uid 邮件唯一标识符
+   * @param attachmentIdentifier 附件唯一标识（ID 序号或文件名）
+   * @param mailbox 所在邮箱文件夹，默认 INBOX
+   * @returns 下载落盘结果
+   * @throws Error 当未找到邮件或目标附件时
+   */
+  async downloadAttachment(
+    uid: number,
+    attachmentIdentifier: string,
+    mailbox = "INBOX"
+  ): Promise<DownloadAttachmentResult> {
+    const client = this.createClient();
+    await client.connect();
+
+    try {
+      const mailboxes = await client.list();
+      const targetMailbox = resolveSpecialMailbox(mailbox, mailboxes);
+
+      const lock = await client.getMailboxLock(targetMailbox);
+      try {
+        const download = await client.download(String(uid), undefined, { uid: true });
+        if (!download || !download.content) {
+          throw new Error(`未找到 UID 为 ${uid} 的邮件内容`);
+        }
+
+        const parsed = await simpleParser(download.content);
+        const attachments = parsed.attachments || [];
+
+        // 优先通过数字索引匹配，其次匹配文件名
+        const targetIndex = attachments.findIndex(
+          (att, idx) =>
+            String(idx) === String(attachmentIdentifier) ||
+            att.filename === attachmentIdentifier
+        );
+
+        if (targetIndex === -1) {
+          throw new Error(
+            `未在邮件 (UID: ${uid}) 中找到标识为 "${attachmentIdentifier}" 的附件`
+          );
+        }
+
+        const targetAttachment = attachments[targetIndex];
+        if (!targetAttachment.content) {
+          throw new Error(
+            `附件 "${targetAttachment.filename || attachmentIdentifier}" 内容为空或无法提取`
+          );
+        }
+
+        const rawFileName = targetAttachment.filename || `attachment-${targetIndex}`;
+        const saved = await saveAttachmentToSandbox(rawFileName, targetAttachment.content);
+
+        return {
+          attachmentId: String(targetIndex),
+          filename: saved.filename,
+          contentType: targetAttachment.contentType || "application/octet-stream",
+          size: saved.size,
+          filePath: saved.filePath,
+          fileUrl: saved.fileUrl,
+        };
       } finally {
         lock.release();
       }
