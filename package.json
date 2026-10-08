@@ -1,0 +1,66 @@
+{
+  "name": "@atengk/mcp-server-email",
+  "version": "1.0.0",
+  "description": "生产级 Email Model Context Protocol (MCP) 服务端，支持 SMTP 邮件外发、IMAP 邮箱检索与附件处理，提供 Stdio 与 SSE 双模传输",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atengk/mcp-server-email.git"
+  },
+  "homepage": "https://github.com/atengk/mcp-server-email#readme",
+  "bugs": {
+    "url": "https://github.com/atengk/mcp-server-email/issues"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "mcp-server-email": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "email",
+    "smtp",
+    "imap",
+    "nodemailer",
+    "imapflow",
+    "ai-agent",
+    "llm"
+  ],
+  "author": "Ateng",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.6.1",
+    "dotenv": "^16.4.7",
+    "imapflow": "^1.0.171",
+    "mailparser": "^3.7.2",
+    "nodemailer": "^6.10.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.5",
+    "@types/node": "^22.13.0",
+    "@types/nodemailer": "^6.4.17",
+    "tsup": "^8.3.6",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
