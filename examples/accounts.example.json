@@ -1,0 +1,38 @@
+{
+  "personal": {
+    "email": "personal@example.com",
+    "smtp": {
+      "host": "smtp.qq.com",
+      "port": 465,
+      "secure": true,
+      "user": "personal@example.com",
+      "pass": "YOUR_QQ_AUTH_CODE",
+      "from": "个人助手 <personal@example.com>"
+    },
+    "imap": {
+      "host": "imap.qq.com",
+      "port": 993,
+      "secure": true,
+      "user": "personal@example.com",
+      "pass": "YOUR_QQ_AUTH_CODE"
+    }
+  },
+  "work": {
+    "email": "work@company.com",
+    "smtp": {
+      "host": "smtp.office365.com",
+      "port": 587,
+      "secure": false,
+      "user": "work@company.com",
+      "pass": "YOUR_WORK_PASSWORD",
+      "from": "工作助理 <work@company.com>"
+    },
+    "imap": {
+      "host": "outlook.office365.com",
+      "port": 993,
+      "secure": true,
+      "user": "work@company.com",
+      "pass": "YOUR_WORK_PASSWORD"
+    }
+  }
+}
