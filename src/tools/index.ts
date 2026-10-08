@@ -446,4 +446,140 @@ export function registerEmailTools(server: McpServer): void {
       }
     }
   );
+
+  // 10. 标记邮件已读/未读工具
+  server.tool(
+    "mark_email_read",
+    "对单封或批量邮件设置已读或未读标记（\\Seen），协助完成待办邮件分诊流转",
+    {
+      account: z.string().optional().describe("邮箱账户画像标识，缺省时使用默认账户"),
+      uids: z
+        .union([z.number(), z.array(z.number())])
+        .describe("单封邮件 UID（数字）或批量邮件 UID 数组（如 [101, 102]）"),
+      read: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe("是否标记为已读（true 为已读，false 为未读），默认为 true"),
+      mailbox: z
+        .string()
+        .optional()
+        .default("INBOX")
+        .describe("目标邮箱文件夹别名或物理路径，默认为 INBOX"),
+    },
+    async (args) => {
+      try {
+        const imapService = accountManager.getImapService(args.account);
+        const result = await imapService.markEmailRead(
+          args.uids,
+          args.read,
+          args.mailbox
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          isError: true,
+          content: [{ type: "text", text: `标记已读状态失败: ${message}` }],
+        };
+      }
+    }
+  );
+
+  // 11. 邮件星标/置顶标记工具
+  server.tool(
+    "flag_email",
+    "对单封或批量邮件设置或取消重要星标标记（\\Flagged），用于重点关注或待办标记",
+    {
+      account: z.string().optional().describe("邮箱账户画像标识，缺省时使用默认账户"),
+      uids: z
+        .union([z.number(), z.array(z.number())])
+        .describe("单封邮件 UID（数字）或批量邮件 UID 数组（如 [101, 102]）"),
+      flagged: z
+        .boolean()
+        .optional()
+        .default(true)
+        .describe("是否设置星标（true 为星标置顶，false 为取消星标），默认为 true"),
+      mailbox: z
+        .string()
+        .optional()
+        .default("INBOX")
+        .describe("目标邮箱文件夹别名或物理路径，默认为 INBOX"),
+    },
+    async (args) => {
+      try {
+        const imapService = accountManager.getImapService(args.account);
+        const result = await imapService.flagEmail(
+          args.uids,
+          args.flagged,
+          args.mailbox
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          isError: true,
+          content: [{ type: "text", text: `设置星标状态失败: ${message}` }],
+        };
+      }
+    }
+  );
+
+  // 12. 邮件跨文件夹移动与防灾软删除工具
+  server.tool(
+    "move_email",
+    "将单封或批量邮件移动至目标文件夹（如归档至 archive）；彻底禁用物理硬删除，删除邮件请指定 targetMailbox 为 trash 进行安全软删除",
+    {
+      account: z.string().optional().describe("邮箱账户画像标识，缺省时使用默认账户"),
+      uids: z
+        .union([z.number(), z.array(z.number())])
+        .describe("单封邮件 UID（数字）或批量邮件 UID 数组（如 [101, 102]）"),
+      targetMailbox: z
+        .string()
+        .describe("目标邮箱文件夹别名或物理路径（如 trash 进行软删除，或 archive 归档）"),
+      sourceMailbox: z
+        .string()
+        .optional()
+        .default("INBOX")
+        .describe("源邮箱文件夹别名或物理路径，默认为 INBOX"),
+    },
+    async (args) => {
+      try {
+        const imapService = accountManager.getImapService(args.account);
+        const result = await imapService.moveEmail(
+          args.uids,
+          args.targetMailbox,
+          args.sourceMailbox
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          isError: true,
+          content: [{ type: "text", text: `移动邮件失败: ${message}` }],
+        };
+      }
+    }
+  );
 }

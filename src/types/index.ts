@@ -313,3 +313,42 @@ export interface ConnectionVerifyReport {
   overallSuccess: boolean;
 }
 
+/**
+ * 邮件已读标记流转操作结果
+ */
+export interface MarkEmailReadResult {
+  /** 操作是否成功 */
+  success: boolean;
+  /** 涉及修改的邮件数量 */
+  count: number;
+  /** 设置的目标已读状态 */
+  read: boolean;
+}
+
+/**
+ * 邮件星标标记操作结果
+ */
+export interface FlagEmailResult {
+  /** 操作是否成功 */
+  success: boolean;
+  /** 涉及修改的邮件数量 */
+  count: number;
+  /** 设置的目标星标状态 */
+  flagged: boolean;
+}
+
+/**
+ * 邮件跨文件夹移动与软删除操作结果
+ */
+export interface MoveEmailResult {
+  /** 操作是否成功 */
+  success: boolean;
+  /** 移动的邮件数量 */
+  count: number;
+  /** 源邮箱文件夹物理路径 */
+  sourceMailbox: string;
+  /** 目标邮箱文件夹物理路径 */
+  targetMailbox: string;
+}
+
+

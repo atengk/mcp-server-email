@@ -12,9 +12,12 @@ import type {
   EmailAttachmentMetadata,
   EmailDetail,
   EmailSummary,
+  FlagEmailResult,
   ImapConfig,
   MailboxStatus,
   MailboxStatusReport,
+  MarkEmailReadResult,
+  MoveEmailResult,
   SearchEmailFilter,
   SearchEmailsResult,
   SendEmailOptions,
@@ -496,6 +499,150 @@ export class ImapService {
         totalUnseen,
         totalMessages,
       };
+    } finally {
+      await client.logout().catch(() => {});
+    }
+  }
+
+  /**
+   * 将邮件 UID 或 UID 列表格式化为 IMAP SequenceSet 字符串并执行有效性校验
+   *
+   * @param uids 单个 UID 或 UID 数组
+   * @returns 规整后的 IMAP 查询范围字符串与计数
+   * @throws Error 当未提供任何有效 UID 时
+   */
+  private formatUidRange(uids: number | number[]): { range: string; count: number } {
+    const list = Array.isArray(uids) ? uids : [uids];
+    const valid = list.filter((u) => typeof u === "number" && !isNaN(u) && u > 0);
+    if (valid.length === 0) {
+      throw new Error("请提供至少一个有效的邮件 UID 标识符");
+    }
+    const sorted = Array.from(new Set(valid)).sort((a, b) => a - b);
+    return {
+      range: sorted.join(","),
+      count: sorted.length,
+    };
+  }
+
+  /**
+   * 修改邮件的已读/未读状态标记 (\Seen)
+   *
+   * @param uids 单个邮件 UID 或 UID 列表
+   * @param read 是否标记为已读（true 为已读，false 为未读，默认 true）
+   * @param mailbox 所在邮箱文件夹别名或物理路径，默认 INBOX
+   * @returns 状态流转操作结果
+   */
+  async markEmailRead(
+    uids: number | number[],
+    read = true,
+    mailbox = "INBOX"
+  ): Promise<MarkEmailReadResult> {
+    const client = this.createClient();
+    await client.connect();
+
+    try {
+      const mailboxes = await client.list();
+      const resolvedMailbox = resolveSpecialMailbox(mailbox, mailboxes);
+
+      const lock = await client.getMailboxLock(resolvedMailbox);
+      try {
+        const { range, count } = this.formatUidRange(uids);
+        if (read) {
+          await client.messageFlagsAdd(range, ["\\Seen"], { uid: true });
+        } else {
+          await client.messageFlagsRemove(range, ["\\Seen"], { uid: true });
+        }
+
+        return {
+          success: true,
+          count,
+          read,
+        };
+      } finally {
+        lock.release();
+      }
+    } finally {
+      await client.logout().catch(() => {});
+    }
+  }
+
+  /**
+   * 修改邮件的星标/置顶标记 (\Flagged)
+   *
+   * @param uids 单个邮件 UID 或 UID 列表
+   * @param flagged 是否设置星标（true 为星标，false 为取消星标，默认 true）
+   * @param mailbox 所在邮箱文件夹别名或物理路径，默认 INBOX
+   * @returns 星标设置操作结果
+   */
+  async flagEmail(
+    uids: number | number[],
+    flagged = true,
+    mailbox = "INBOX"
+  ): Promise<FlagEmailResult> {
+    const client = this.createClient();
+    await client.connect();
+
+    try {
+      const mailboxes = await client.list();
+      const resolvedMailbox = resolveSpecialMailbox(mailbox, mailboxes);
+
+      const lock = await client.getMailboxLock(resolvedMailbox);
+      try {
+        const { range, count } = this.formatUidRange(uids);
+        if (flagged) {
+          await client.messageFlagsAdd(range, ["\\Flagged"], { uid: true });
+        } else {
+          await client.messageFlagsRemove(range, ["\\Flagged"], { uid: true });
+        }
+
+        return {
+          success: true,
+          count,
+          flagged,
+        };
+      } finally {
+        lock.release();
+      }
+    } finally {
+      await client.logout().catch(() => {});
+    }
+  }
+
+  /**
+   * 将邮件跨文件夹移动或转移至回收站进行安全软删除（彻底杜绝物理硬删除 EXPUNGE）
+   *
+   * @param uids 单个邮件 UID 或 UID 列表
+   * @param targetMailbox 目标邮箱文件夹别名或物理路径（如 trash, archive, INBOX）
+   * @param sourceMailbox 源邮箱文件夹别名或物理路径，默认 INBOX
+   * @returns 移动结果，包含实际物理源路径与目标路径
+   */
+  async moveEmail(
+    uids: number | number[],
+    targetMailbox: string,
+    sourceMailbox = "INBOX"
+  ): Promise<MoveEmailResult> {
+    const client = this.createClient();
+    await client.connect();
+
+    try {
+      const mailboxes = await client.list();
+      const resolvedSource = resolveSpecialMailbox(sourceMailbox, mailboxes);
+      const resolvedTarget = resolveSpecialMailbox(targetMailbox, mailboxes);
+
+      const lock = await client.getMailboxLock(resolvedSource);
+      try {
+        const { range, count } = this.formatUidRange(uids);
+        await client.messageMove(range, resolvedTarget, { uid: true });
+
+        return {
+          success: true,
+          count,
+          sourceMailbox: resolvedSource,
+          targetMailbox: resolvedTarget,
+        };
+      } finally {
+        lock.release();
+      }
     } finally {
       await client.logout().catch(() => {});
     }
