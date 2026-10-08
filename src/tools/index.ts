@@ -6,8 +6,7 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { imapService } from "../services/imap.service.js";
-import { smtpService } from "../services/smtp.service.js";
+import { accountManager } from "../services/account-manager.js";
 
 /**
  * 注册所有邮件相关的 MCP 工具到服务端实例
@@ -15,11 +14,66 @@ import { smtpService } from "../services/smtp.service.js";
  * @param server McpServer 实例
  */
 export function registerEmailTools(server: McpServer): void {
-  // 1. 发送邮件工具
+  // 1. 列出可用邮箱账户画像（凭据脱敏）
+  server.tool(
+    "list_accounts",
+    "列出所有已配置的邮箱账户画像列表（凭据安全脱敏，隐藏密码），包含账户标识、邮箱地址、服务配置与默认账户标记",
+    {},
+    async () => {
+      try {
+        const accounts = accountManager.listAccounts();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(accounts, null, 2),
+            },
+          ],
+        };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          isError: true,
+          content: [{ type: "text", text: `获取账户列表失败: ${message}` }],
+        };
+      }
+    }
+  );
+
+  // 2. 连通性自检与凭据体检工具
+  server.tool(
+    "verify_connection",
+    "验证指定或默认邮箱账户的网络连通性与认证凭据（包括 SMTP 外发和 IMAP 查收通道），返回网络握手与身份认证体检报告",
+    {
+      account: z.string().optional().describe("邮箱账户画像标识，缺省时体检默认账户"),
+    },
+    async (args) => {
+      try {
+        const report = await accountManager.verifyConnection(args.account);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(report, null, 2),
+            },
+          ],
+        };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          isError: true,
+          content: [{ type: "text", text: `验证账户连接失败: ${message}` }],
+        };
+      }
+    }
+  );
+
+  // 3. 发送邮件工具
   server.tool(
     "send_email",
     "发送电子邮件，支持纯文本、HTML 正文以及文件附件",
     {
+      account: z.string().optional().describe("发信邮箱账户画像标识，缺省时使用默认账户"),
       to: z.union([z.string(), z.array(z.string())]).describe("收件人邮箱地址，单个或数组"),
       subject: z.string().describe("邮件主题"),
       text: z.string().optional().describe("纯文本正文内容"),
@@ -40,6 +94,7 @@ export function registerEmailTools(server: McpServer): void {
     },
     async (args) => {
       try {
+        const smtpService = accountManager.getSmtpService(args.account);
         const result = await smtpService.sendEmail({
           to: args.to,
           subject: args.subject,
@@ -68,11 +123,12 @@ export function registerEmailTools(server: McpServer): void {
     }
   );
 
-  // 2. 检索邮件列表工具
+  // 4. 检索邮件列表工具
   server.tool(
     "search_emails",
     "在邮箱中按过滤条件检索邮件，返回摘要列表",
     {
+      account: z.string().optional().describe("收信邮箱账户画像标识，缺省时使用默认账户"),
       mailbox: z.string().optional().default("INBOX").describe("邮箱文件夹名称，默认为 INBOX"),
       from: z.string().optional().describe("按发件人地址或关键字筛选"),
       subject: z.string().optional().describe("按邮件主题关键字筛选"),
@@ -82,6 +138,7 @@ export function registerEmailTools(server: McpServer): void {
     },
     async (args) => {
       try {
+        const imapService = accountManager.getImapService(args.account);
         const list = await imapService.searchEmails({
           mailbox: args.mailbox,
           from: args.from,
@@ -109,16 +166,18 @@ export function registerEmailTools(server: McpServer): void {
     }
   );
 
-  // 3. 获取邮件正文及附件详情工具
+  // 5. 获取邮件正文及附件详情工具
   server.tool(
     "get_email_detail",
     "根据邮件全局 UID 获取单封邮件的完整正文内容与附件清单",
     {
+      account: z.string().optional().describe("收信邮箱账户画像标识，缺省时使用默认账户"),
       uid: z.number().describe("邮件的唯一 UID 标识符"),
       mailbox: z.string().optional().default("INBOX").describe("邮箱文件夹名称，默认为 INBOX"),
     },
     async (args) => {
       try {
+        const imapService = accountManager.getImapService(args.account);
         const detail = await imapService.getEmailDetail(args.uid, args.mailbox);
         return {
           content: [
@@ -138,13 +197,16 @@ export function registerEmailTools(server: McpServer): void {
     }
   );
 
-  // 4. 列出全部邮箱目录工具
+  // 6. 列出全部邮箱目录工具
   server.tool(
     "list_mailboxes",
     "获取当前邮箱服务的所有可用文件夹/目录列表（如 INBOX, Sent, Trash 等）",
-    {},
-    async () => {
+    {
+      account: z.string().optional().describe("收信邮箱账户画像标识，缺省时使用默认账户"),
+    },
+    async (args) => {
       try {
+        const imapService = accountManager.getImapService(args.account);
         const mailboxes = await imapService.listMailboxes();
         return {
           content: [

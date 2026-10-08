@@ -6,13 +6,15 @@
  */
 import nodemailer, { type Transporter } from "nodemailer";
 import { config } from "../config/index.js";
-import type { SendEmailOptions } from "../types/index.js";
+import type { SendEmailOptions, SmtpConfig } from "../types/index.js";
 
 /**
  * SMTP 传输管理服务
  */
 export class SmtpService {
   private transporter: Transporter | null = null;
+
+  constructor(private readonly smtpConfig?: SmtpConfig) {}
 
   /**
    * 初始化并获取 Nodemailer 传输器单例
@@ -25,19 +27,25 @@ export class SmtpService {
       return this.transporter;
     }
 
-    if (!config.MCP_SMTP_HOST || !config.MCP_SMTP_USER || !config.MCP_SMTP_PASS) {
+    const host = this.smtpConfig?.host || config.MCP_SMTP_HOST;
+    const port = this.smtpConfig?.port ?? config.MCP_SMTP_PORT;
+    const secure = this.smtpConfig?.secure ?? config.MCP_SMTP_SECURE;
+    const user = this.smtpConfig?.user || config.MCP_SMTP_USER;
+    const pass = this.smtpConfig?.pass || config.MCP_SMTP_PASS;
+
+    if (!host || !user || !pass) {
       throw new Error(
         "SMTP 配置不完整：请确保已配置 MCP_SMTP_HOST、MCP_SMTP_USER 和 MCP_SMTP_PASS 环境变量"
       );
     }
 
     this.transporter = nodemailer.createTransport({
-      host: config.MCP_SMTP_HOST,
-      port: config.MCP_SMTP_PORT,
-      secure: config.MCP_SMTP_SECURE,
+      host,
+      port,
+      secure,
       auth: {
-        user: config.MCP_SMTP_USER,
-        pass: config.MCP_SMTP_PASS,
+        user,
+        pass,
       },
     });
 
@@ -56,7 +64,11 @@ export class SmtpService {
     const client = this.getTransporter();
 
     // 2. 组装发件人与信件载荷
-    const from = config.MCP_SMTP_FROM || config.MCP_SMTP_USER;
+    const from =
+      this.smtpConfig?.from ||
+      this.smtpConfig?.user ||
+      config.MCP_SMTP_FROM ||
+      config.MCP_SMTP_USER;
     const mailOptions = {
       from,
       to: Array.isArray(options.to) ? options.to.join(", ") : options.to,

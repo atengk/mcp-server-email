@@ -7,12 +7,14 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { config } from "../config/index.js";
-import type { EmailDetail, EmailSummary, SearchEmailFilter } from "../types/index.js";
+import type { EmailDetail, EmailSummary, ImapConfig, SearchEmailFilter } from "../types/index.js";
 
 /**
  * IMAP 邮件存储交互服务
  */
 export class ImapService {
+  constructor(private readonly imapConfig?: ImapConfig) {}
+
   /**
    * 创建新的 IMAP 客户端连接
    *
@@ -20,19 +22,25 @@ export class ImapService {
    * @throws Error 当未配置 IMAP 主机或账号时
    */
   private createClient(): ImapFlow {
-    if (!config.MCP_IMAP_HOST || !config.MCP_IMAP_USER || !config.MCP_IMAP_PASS) {
+    const host = this.imapConfig?.host || config.MCP_IMAP_HOST;
+    const port = this.imapConfig?.port ?? config.MCP_IMAP_PORT;
+    const secure = this.imapConfig?.secure ?? config.MCP_IMAP_SECURE;
+    const user = this.imapConfig?.user || config.MCP_IMAP_USER;
+    const pass = this.imapConfig?.pass || config.MCP_IMAP_PASS;
+
+    if (!host || !user || !pass) {
       throw new Error(
         "IMAP 配置不完整：请确保已配置 MCP_IMAP_HOST、MCP_IMAP_USER 和 MCP_IMAP_PASS 环境变量"
       );
     }
 
     return new ImapFlow({
-      host: config.MCP_IMAP_HOST,
-      port: config.MCP_IMAP_PORT,
-      secure: config.MCP_IMAP_SECURE,
+      host,
+      port,
+      secure,
       auth: {
-        user: config.MCP_IMAP_USER,
-        pass: config.MCP_IMAP_PASS,
+        user,
+        pass,
       },
       logger: false, // 禁用内部控制台输出，保护 MCP Stdio 通信通道
     });
@@ -189,6 +197,21 @@ export class ImapService {
       } finally {
         lock.release();
       }
+    } finally {
+      await client.logout().catch(() => {});
+    }
+  }
+
+  /**
+   * 验证 IMAP 服务的网络握手与身份认证
+   *
+   * @returns 是否连接成功
+   */
+  async verifyConnection(): Promise<boolean> {
+    const client = this.createClient();
+    try {
+      await client.connect();
+      return true;
     } finally {
       await client.logout().catch(() => {});
     }

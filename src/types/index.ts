@@ -104,3 +104,114 @@ export interface SearchEmailFilter {
   /** 最大返回数量（默认 10） */
   limit?: number;
 }
+
+/**
+ * SMTP 账户配置
+ */
+export interface SmtpConfig {
+  /** SMTP 服务器主机地址 */
+  host: string;
+  /** 端口号 (如 465 或 587) */
+  port: number;
+  /** 是否开启 TLS/SSL */
+  secure: boolean;
+  /** 用户名/邮箱账号 */
+  user: string;
+  /** 授权码或密码 */
+  pass: string;
+  /** 默认发件人 (如 Name <user@example.com>) */
+  from?: string;
+}
+
+/**
+ * IMAP 账户配置
+ */
+export interface ImapConfig {
+  /** IMAP 服务器主机地址 */
+  host: string;
+  /** 端口号 (如 993) */
+  port: number;
+  /** 是否开启 TLS/SSL */
+  secure: boolean;
+  /** 用户名/邮箱账号 */
+  user: string;
+  /** 授权码或密码 */
+  pass: string;
+}
+
+/**
+ * 完整邮箱账户画像（包含密码凭据，仅限服务端内部受控使用）
+ */
+export interface AccountProfile {
+  /** 账户唯一标识，如 default, work, personal */
+  id: string;
+  /** 账户别名或名称 */
+  name?: string;
+  /** 关联邮箱地址 */
+  email?: string;
+  /** SMTP 外发服务配置 */
+  smtp?: SmtpConfig;
+  /** IMAP 查收服务配置 */
+  imap?: ImapConfig;
+}
+
+
+/**
+ * 对外脱敏公开的账户画像（隐藏密码凭据）
+ */
+export interface SanitizedAccountProfile {
+  /** 账户唯一标识 */
+  id: string;
+  /** 账户别名或名称 */
+  name?: string;
+  /** 关联邮箱地址 */
+  email?: string;
+  /** 是否为当前默认账户 */
+  isDefault: boolean;
+  /** SMTP 脱敏配置 */
+  smtp?: {
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+    from?: string;
+  };
+  /** IMAP 脱敏配置 */
+  imap?: {
+    host: string;
+    port: number;
+    secure: boolean;
+    user: string;
+  };
+}
+
+/**
+ * 单项服务连通性检查结果
+ */
+export interface ServiceCheckResult {
+  /** 是否已配置该服务 */
+  configured: boolean;
+  /** 是否联通成功 */
+  success: boolean;
+  /** 服务器主机 */
+  host?: string;
+  /** 端口 */
+  port?: number;
+  /** 错误信息 */
+  error?: string;
+}
+
+/**
+ * 账户连通性综合体检报告
+ */
+export interface ConnectionVerifyReport {
+  /** 检查的账户标识 */
+  account: string;
+  /** SMTP 检查结果 */
+  smtp: ServiceCheckResult;
+  /** IMAP 检查结果 */
+  imap: ServiceCheckResult;
+  /** 综合是否完全成功 */
+  overallSuccess: boolean;
+}
+
