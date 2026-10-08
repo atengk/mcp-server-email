@@ -169,10 +169,14 @@ export class ImapService {
           const matchedUids: number[] = [];
 
           if (scanUids.length > 0) {
-            for await (const message of client.fetch(scanUids, {
-              uid: true,
-              bodyStructure: true,
-            })) {
+            for await (const message of client.fetch(
+              scanUids,
+              {
+                uid: true,
+                bodyStructure: true,
+              },
+              { uid: true }
+            )) {
               const hasAttachments = Boolean(
                 message.bodyStructure?.childNodes &&
                   message.bodyStructure.childNodes.length > 1
@@ -194,15 +198,19 @@ export class ImapService {
         const items: EmailSummary[] = [];
 
         if (selectedUids.length > 0) {
-          for await (const message of client.fetch(selectedUids, {
-            envelope: true,
-            flags: true,
-            internalDate: true,
-            uid: true,
-            bodyStructure: true,
-            bodyParts: ["TEXT", "1"],
-            source: { maxLength: 2048 },
-          })) {
+          for await (const message of client.fetch(
+            selectedUids,
+            {
+              envelope: true,
+              flags: true,
+              internalDate: true,
+              uid: true,
+              bodyStructure: true,
+              bodyParts: ["TEXT", "1"],
+              source: { maxLength: 2048 },
+            },
+            { uid: true }
+          )) {
             const hasAttachments = Boolean(
               message.bodyStructure?.childNodes &&
                 message.bodyStructure.childNodes.length > 1

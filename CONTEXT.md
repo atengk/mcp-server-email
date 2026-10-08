@@ -75,3 +75,11 @@ _Avoid_: File blocker, path firewall
 **Windowed Probe**:
 The bounded lookahead scanning strategy that inspects up to 100 recent messages to satisfy IMAP post-filters (such as attachment presence) before applying pagination slices, eliminating sparse result pages.
 _Avoid_: Full mailbox scan, brute-force filter
+
+**Message UID (Unique Identifier)**:
+The persistent, strictly monotonically increasing 32-bit unsigned integer assigned by the IMAP server that uniquely identifies a message within a mailbox across sessions, remaining invariant even when other messages are deleted. All MCP tools and service interactions strictly mandate a UID-First paradigm (`{ uid: true }`).
+_Avoid_: Message ID (which denotes the RFC 822 Message-ID header), Sequence number, mail pointer
+
+**Message Sequence Number**:
+The transient, 1-based sequential slot position (1 through N) of a message within an open mailbox session, subject to immediate renumbering whenever earlier messages are deleted or moved. Sequence numbers must never be exposed as public identifiers or substituted for UIDs.
+_Avoid_: Persistent message index, stable row ID

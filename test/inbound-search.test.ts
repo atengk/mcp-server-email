@@ -198,4 +198,65 @@ describe("Inbound Search & Preview Snippet", () => {
     expect(res.items[2].uid).toBe(6);
     expect(res.hasMore).toBe(true);
   });
+
+  it("searchEmails 在历史删信导致邮件 UID 远大于消息总数时，应通过 { uid: true } 正确拉取邮件（针对 Issue #8 防御）", async () => {
+    const mockConfig: ImapConfig = {
+      host: "imap.example.com",
+      port: 993,
+      secure: true,
+      user: "sparse@example.com",
+      pass: "secret",
+    };
+
+    const service = new ImapService(mockConfig);
+    // 模拟邮箱总邮件数为 2，但由于历史删信，UID 已经达到 3674、3675（远大于序号 1, 2）
+    const sparseUids = [3674, 3675];
+    const fetchOptionsList: any[] = [];
+
+    const mockClient = {
+      connect: vi.fn().mockResolvedValue(undefined),
+      logout: vi.fn().mockResolvedValue(undefined),
+      list: vi.fn().mockResolvedValue([{ path: "INBOX" }]),
+      getMailboxLock: vi.fn().mockResolvedValue({ release: vi.fn() }),
+      search: vi.fn().mockResolvedValue(sparseUids),
+      fetch: vi.fn().mockImplementation(async function* (uids: number[], query: any, options: any) {
+        fetchOptionsList.push(options);
+        for (const uid of uids) {
+          yield {
+            uid,
+            seq: uid === 3675 ? 2 : 1, // 真实物理序号为 1, 2
+            envelope: {
+              subject: `历史删信后的最新邮件 #${uid}`,
+              from: [{ name: "Boss", address: "boss@example.com" }],
+              date: new Date("2026-10-08T12:00:00Z"),
+            },
+            flags: new Set(["\\Seen"]),
+            bodyStructure: { childNodes: [] },
+            source: Buffer.from(`正文 #${uid}`),
+          };
+        }
+      }),
+    };
+
+    (service as any).createClient = () => mockClient;
+
+    const res = await service.searchEmails({
+      mailbox: "INBOX",
+      page: 1,
+      limit: 10,
+    });
+
+    // 严格断言：client.fetch 必须收到第三个参数 { uid: true }
+    expect(fetchOptionsList).toHaveLength(1);
+    expect(fetchOptionsList[0]).toEqual({ uid: true });
+
+    // 严格断言：返回 items 绝不为空列表，且包含正确的 UID
+    expect(res.total).toBe(2);
+    expect(res.items).toHaveLength(2);
+    expect(res.items[0].uid).toBe(3675);
+    expect(res.items[1].uid).toBe(3674);
+    expect(res.items[0].seq).toBe(2);
+    expect(res.items[1].seq).toBe(1);
+  });
 });
+
