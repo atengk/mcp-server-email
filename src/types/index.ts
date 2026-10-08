@@ -32,6 +32,12 @@ export interface SendEmailOptions {
     /** 内容类型 (MIME Type) */
     contentType?: string;
   }>;
+  /** 原发件人地址覆盖（可选） */
+  from?: string;
+  /** 关联回复邮件的 Message-ID (RFC 822) */
+  inReplyTo?: string;
+  /** 关联会话引用链 Message-ID 集合 */
+  references?: string | string[];
 }
 
 /**
@@ -62,8 +68,10 @@ export interface EmailSummary {
 export interface EmailDetail {
   /** 邮件 UID */
   uid: number;
-  /** 发件人 */
+  /** 发件人名称与地址全文本 */
   from: string;
+  /** 发件人纯邮箱地址 */
+  fromAddress?: string;
   /** 收件人列表 */
   to: string[];
   /** 抄送列表 */
@@ -76,6 +84,12 @@ export interface EmailDetail {
   text?: string;
   /** HTML 格式正文 */
   html?: string;
+  /** 全局唯一 Message-ID (RFC 822) */
+  messageId?: string;
+  /** 关联上级 Message-ID */
+  inReplyTo?: string;
+  /** 会话线程引用链条 */
+  references?: string[];
   /** 附件元数据清单 */
   attachments: Array<{
     /** 附件名称 */

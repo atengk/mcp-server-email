@@ -7,7 +7,14 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { config } from "../config/index.js";
-import type { EmailDetail, EmailSummary, ImapConfig, SearchEmailFilter } from "../types/index.js";
+import type {
+  EmailDetail,
+  EmailSummary,
+  ImapConfig,
+  SearchEmailFilter,
+  SendEmailOptions,
+} from "../types/index.js";
+import { buildRawMimeMessage, resolveSpecialMailbox } from "./mailbox-resolver.js";
 
 /**
  * IMAP 邮件存储交互服务
@@ -183,17 +190,30 @@ export class ImapService {
           size: att.size,
         }));
 
+        const fromAddress = parsed.from?.value?.[0]?.address || undefined;
+        let references: string[] | undefined;
+        if (parsed.references) {
+          references = Array.isArray(parsed.references)
+            ? parsed.references
+            : [parsed.references];
+        }
+
         return {
           uid,
           from: parsed.from?.text || "未知发件人",
+          fromAddress,
           to: toList,
           cc: ccList.length > 0 ? ccList : undefined,
           subject: parsed.subject || "(无主题)",
           date: parsed.date ? parsed.date.toISOString() : new Date().toISOString(),
           text: parsed.text,
           html: typeof parsed.html === "string" ? parsed.html : undefined,
+          messageId: parsed.messageId,
+          inReplyTo: parsed.inReplyTo,
+          references,
           attachments,
         };
+
       } finally {
         lock.release();
       }
@@ -216,6 +236,41 @@ export class ImapService {
       await client.logout().catch(() => {});
     }
   }
+
+  /**
+   * 将邮件载荷组装为 RFC 822 MIME 数据并存入草稿箱
+   *
+   * @param options 邮件选项载荷
+   * @param from 发件人地址
+   * @returns 存储结果，包含物理草稿箱路径
+   */
+  async createDraft(
+    options: SendEmailOptions,
+    from: string
+  ): Promise<{ success: boolean; mailbox: string }> {
+    const client = this.createClient();
+    await client.connect();
+
+    try {
+      // 1. 获取邮箱列表并解析物理草稿箱路径
+      const mailboxes = await client.list();
+      const draftsPath = resolveSpecialMailbox("drafts", mailboxes);
+
+      // 2. 组装标准 RFC MIME Buffer
+      const rawMime = await buildRawMimeMessage(options, from);
+
+      // 3. 追加至草稿箱，打上 \Draft 与 \Seen 标记
+      await client.append(draftsPath, rawMime, ["\\Draft", "\\Seen"]);
+
+      return {
+        success: true,
+        mailbox: draftsPath,
+      };
+    } finally {
+      await client.logout().catch(() => {});
+    }
+  }
 }
 
 export const imapService = new ImapService();
+

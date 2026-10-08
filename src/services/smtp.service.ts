@@ -65,6 +65,7 @@ export class SmtpService {
 
     // 2. 组装发件人与信件载荷
     const from =
+      options.from ||
       this.smtpConfig?.from ||
       this.smtpConfig?.user ||
       config.MCP_SMTP_FROM ||
@@ -78,6 +79,8 @@ export class SmtpService {
       text: options.text,
       html: options.html,
       attachments: options.attachments,
+      inReplyTo: options.inReplyTo,
+      references: options.references,
     };
 
     // 3. 执行外发传输并返回结果
