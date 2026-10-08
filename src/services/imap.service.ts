@@ -151,11 +151,45 @@ export class ImapService {
           };
         }
 
-        // 3. 计算分页切片 (按 UID 逆序排，最新邮件优先)
+        // 3. 计算分页切片与拉取条目
         const sortedUids = [...uids].reverse();
-        const startIndex = (page - 1) * limit;
-        const selectedUids = sortedUids.slice(startIndex, startIndex + limit);
-        const hasMore = startIndex + limit < total;
+        let selectedUids: number[] = [];
+        let effectiveTotal = total;
+        let hasMore = false;
+
+        if (filter.hasAttachment === undefined) {
+          // 常规无附件过滤场景：直接高效分页切片
+          const startIndex = (page - 1) * limit;
+          selectedUids = sortedUids.slice(startIndex, startIndex + limit);
+          hasMore = startIndex + limit < total;
+        } else {
+          // 带有附件过滤场景：窗口探测回填（最大探测深度 100 封，消除分页稀疏断层）
+          const maxScanLimit = Math.min(sortedUids.length, 100);
+          const scanUids = sortedUids.slice(0, maxScanLimit);
+          const matchedUids: number[] = [];
+
+          if (scanUids.length > 0) {
+            for await (const message of client.fetch(scanUids, {
+              uid: true,
+              bodyStructure: true,
+            })) {
+              const hasAttachments = Boolean(
+                message.bodyStructure?.childNodes &&
+                  message.bodyStructure.childNodes.length > 1
+              );
+              if (hasAttachments === filter.hasAttachment) {
+                matchedUids.push(message.uid);
+              }
+            }
+          }
+
+          // 保持逆序排布（最新邮件优先）
+          matchedUids.sort((a, b) => b - a);
+          effectiveTotal = matchedUids.length;
+          const startIndex = (page - 1) * limit;
+          selectedUids = matchedUids.slice(startIndex, startIndex + limit);
+          hasMore = startIndex + limit < matchedUids.length;
+        }
 
         const items: EmailSummary[] = [];
 
@@ -173,13 +207,6 @@ export class ImapService {
               message.bodyStructure?.childNodes &&
                 message.bodyStructure.childNodes.length > 1
             );
-
-            if (
-              filter.hasAttachment !== undefined &&
-              hasAttachments !== filter.hasAttachment
-            ) {
-              continue;
-            }
 
             const fromAddr = message.envelope?.from?.[0]
               ? `${message.envelope.from[0].name || ""} <${message.envelope.from[0].address || ""}>`.trim()
@@ -200,11 +227,14 @@ export class ImapService {
               preview,
             });
           }
+
+          // 保证返回项顺序与 selectedUids 顺序一致
+          items.sort((a, b) => b.uid - a.uid);
         }
 
         return {
           items,
-          total,
+          total: effectiveTotal,
           page,
           limit,
           hasMore,
@@ -360,7 +390,7 @@ export class ImapService {
         }
 
         const rawFileName = targetAttachment.filename || `attachment-${targetIndex}`;
-        const saved = await saveAttachmentToSandbox(rawFileName, targetAttachment.content);
+        const saved = await saveAttachmentToSandbox(rawFileName, targetAttachment.content, undefined, uid);
 
         return {
           attachmentId: String(targetIndex),
@@ -463,12 +493,8 @@ export class ImapService {
         };
       }
 
-      // 2. 缺省或 ALL 时，遍历统计所有物理邮箱
-      const items: MailboxStatus[] = [];
-      let totalUnseen = 0;
-      let totalMessages = 0;
-
-      for (const box of allMailboxes) {
+      // 2. 缺省或 ALL 时，并发管道化统计所有物理邮箱状态
+      const statusPromises = allMailboxes.map(async (box) => {
         try {
           const status = await client.status(box.path, {
             messages: true,
@@ -476,22 +502,30 @@ export class ImapService {
             recent: true,
           });
 
-          const unseen = status.unseen || 0;
-          const total = status.messages || 0;
-          const recent = status.recent || 0;
-
-          items.push({
+          return {
             mailbox: box.path,
-            total,
-            unseen,
-            recent,
-          });
-
-          totalUnseen += unseen;
-          totalMessages += total;
+            total: status.messages || 0,
+            unseen: status.unseen || 0,
+            recent: status.recent || 0,
+          };
         } catch {
-          // 部分特殊目录可能不支持 STATUS，静默跳过
+          // 部分特殊目录可能不支持 STATUS，静默降级为 0
+          return {
+            mailbox: box.path,
+            total: 0,
+            unseen: 0,
+            recent: 0,
+          };
         }
+      });
+
+      const items = await Promise.all(statusPromises);
+      let totalUnseen = 0;
+      let totalMessages = 0;
+
+      for (const item of items) {
+        totalUnseen += item.unseen;
+        totalMessages += item.total;
       }
 
       return {

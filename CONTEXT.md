@@ -67,3 +67,11 @@ _Avoid_: Tenant switching, context multiplexing
 **Message Thread**:
 A connected conversational sequence of related messages linked together through standard `In-Reply-To` and `References` headers.
 _Avoid_: Mail chain, email chat, reply tree
+
+**Attachment Guard**:
+The security policy mechanism that validates and restricts candidate local file paths for outgoing email attachments, strictly preventing arbitrary file exfiltration of sensitive credentials.
+_Avoid_: File blocker, path firewall
+
+**Windowed Probe**:
+The bounded lookahead scanning strategy that inspects up to 100 recent messages to satisfy IMAP post-filters (such as attachment presence) before applying pagination slices, eliminating sparse result pages.
+_Avoid_: Full mailbox scan, brute-force filter

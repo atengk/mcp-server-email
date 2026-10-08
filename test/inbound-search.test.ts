@@ -142,4 +142,60 @@ describe("Inbound Search & Preview Snippet", () => {
     expect(resultPage3.items).toHaveLength(5);
     expect(resultPage3.items[0].uid).toBe(5);
   });
+
+  it("searchEmails 带有 hasAttachment 过滤时应通过窗口探测回填紧凑分页", async () => {
+    const mockConfig: ImapConfig = {
+      host: "imap.example.com",
+      port: 993,
+      secure: true,
+      user: "test@example.com",
+      pass: "secret",
+    };
+
+    const service = new ImapService(mockConfig);
+    const mockClient = {
+      connect: vi.fn().mockResolvedValue(undefined),
+      logout: vi.fn().mockResolvedValue(undefined),
+      list: vi.fn().mockResolvedValue([{ path: "INBOX" }]),
+      getMailboxLock: vi.fn().mockResolvedValue({ release: vi.fn() }),
+      search: vi.fn().mockResolvedValue([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+      fetch: vi.fn().mockImplementation(async function* (uids: number[]) {
+        for (const uid of uids) {
+          // 仅偶数 UID 带有附件 (childNodes 长度为 2)
+          const hasAtt = uid % 2 === 0;
+          yield {
+            uid,
+            seq: uid,
+            envelope: {
+              subject: `测试主题 #${uid}`,
+              from: [{ name: "Sender", address: "sender@example.com" }],
+              date: new Date(),
+            },
+            flags: new Set(),
+            bodyStructure: {
+              childNodes: hasAtt ? [{}, {}] : [{}],
+            },
+            source: Buffer.from(`内容 #${uid}`),
+          };
+        }
+      }),
+    };
+
+    (service as any).createClient = () => mockClient;
+
+    const res = await service.searchEmails({
+      mailbox: "inbox",
+      hasAttachment: true,
+      page: 1,
+      limit: 3,
+    });
+
+    // 偶数 UID 为 10, 8, 6, 4, 2，共 5 封有附件
+    expect(res.total).toBe(5);
+    expect(res.items).toHaveLength(3);
+    expect(res.items[0].uid).toBe(10);
+    expect(res.items[1].uid).toBe(8);
+    expect(res.items[2].uid).toBe(6);
+    expect(res.hasMore).toBe(true);
+  });
 });

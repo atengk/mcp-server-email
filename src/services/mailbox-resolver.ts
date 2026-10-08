@@ -6,6 +6,7 @@
  */
 import nodemailer from "nodemailer";
 import type { SendEmailOptions } from "../types/index.js";
+import { validateOutboundAttachmentPath } from "./attachment-sandbox.js";
 
 /**
  * 远程邮箱元数据项
@@ -186,6 +187,17 @@ export async function buildRawMimeMessage(
     buffer: true,
   });
 
+  let safeAttachments = options.attachments;
+  if (options.attachments && options.attachments.length > 0) {
+    safeAttachments = options.attachments.map((att) => {
+      if (att.path) {
+        const validated = validateOutboundAttachmentPath(att.path);
+        return { ...att, path: validated };
+      }
+      return att;
+    });
+  }
+
   const mailOptions = {
     from,
     to: Array.isArray(options.to) ? options.to.join(", ") : options.to,
@@ -202,7 +214,7 @@ export async function buildRawMimeMessage(
     subject: options.subject,
     text: options.text,
     html: options.html,
-    attachments: options.attachments,
+    attachments: safeAttachments,
     inReplyTo: options.inReplyTo,
     references: options.references,
   };

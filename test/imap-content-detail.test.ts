@@ -122,7 +122,7 @@ describe("ImapService Email Detail & Download Attachment", () => {
       expect(res.attachmentId).toBe("0");
       expect(res.filename).toBe("readme.txt");
       expect(res.size).toBe(Buffer.byteLength(pdfContent));
-      expect(res.filePath).toBe(path.join(sandboxDir, "readme.txt"));
+      expect(res.filePath).toBe(path.join(sandboxDir, "50", "readme.txt"));
       expect(res.fileUrl.startsWith("file:///")).toBe(true);
 
       const savedData = await fs.readFile(res.filePath, "utf-8");

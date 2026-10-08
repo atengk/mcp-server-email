@@ -12,6 +12,7 @@ import {
   getAttachmentSandboxDir,
   sanitizeFileName,
   saveAttachmentToSandbox,
+  validateOutboundAttachmentPath,
 } from "../src/services/attachment-sandbox.js";
 
 describe("Attachment Sandbox Service", () => {
@@ -65,5 +66,39 @@ describe("Attachment Sandbox Service", () => {
     } finally {
       await fs.rm(testDir, { recursive: true, force: true }).catch(() => {});
     }
+  });
+
+  it("应支持按邮件 UID 进行子目录分层隔离，杜绝同名附件相互覆盖", async () => {
+    const testDir = path.join(os.tmpdir(), `test-sandbox-uid-${Date.now()}`);
+    try {
+      const content1 = Buffer.from("Mail 100 Content");
+      const content2 = Buffer.from("Mail 200 Content");
+
+      const res1 = await saveAttachmentToSandbox("invoice.pdf", content1, testDir, 100);
+      const res2 = await saveAttachmentToSandbox("invoice.pdf", content2, testDir, 200);
+
+      expect(res1.filePath).toBe(path.join(testDir, "100", "invoice.pdf"));
+      expect(res2.filePath).toBe(path.join(testDir, "200", "invoice.pdf"));
+
+      const read1 = await fs.readFile(res1.filePath, "utf-8");
+      const read2 = await fs.readFile(res2.filePath, "utf-8");
+      expect(read1).toBe("Mail 100 Content");
+      expect(read2).toBe("Mail 200 Content");
+    } finally {
+      await fs.rm(testDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
+  it("validateOutboundAttachmentPath 应严格拦截敏感凭据文件外发并允许安全白名单路径", () => {
+    // 拦截敏感系统与密钥文件
+    expect(() => validateOutboundAttachmentPath(".env")).toThrow("严禁外发系统关键敏感凭据");
+    expect(() => validateOutboundAttachmentPath(".env.production")).toThrow("严禁外发系统关键敏感凭据");
+    expect(() => validateOutboundAttachmentPath("id_rsa")).toThrow("严禁外发系统关键敏感凭据");
+    expect(() => validateOutboundAttachmentPath("/etc/passwd")).toThrow("严禁外发系统关键敏感凭据");
+    expect(() => validateOutboundAttachmentPath("server.key")).toThrow("严禁外发系统关键敏感凭据");
+
+    // 允许工作区内普通文件
+    const safeLocal = validateOutboundAttachmentPath("./package.json");
+    expect(safeLocal).toBe(path.resolve("./package.json"));
   });
 });

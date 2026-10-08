@@ -7,6 +7,7 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { config } from "../config/index.js";
 import type { SendEmailOptions, SmtpConfig } from "../types/index.js";
+import { validateOutboundAttachmentPath } from "./attachment-sandbox.js";
 
 /**
  * SMTP 传输管理服务
@@ -63,7 +64,19 @@ export class SmtpService {
     // 1. 获取并校验 SMTP 传输客户端
     const client = this.getTransporter();
 
-    // 2. 组装发件人与信件载荷
+    // 2. 校验外发附件路径安全性（防敏感数据泄露看门狗）
+    let safeAttachments = options.attachments;
+    if (options.attachments && options.attachments.length > 0) {
+      safeAttachments = options.attachments.map((att) => {
+        if (att.path) {
+          const validated = validateOutboundAttachmentPath(att.path);
+          return { ...att, path: validated };
+        }
+        return att;
+      });
+    }
+
+    // 3. 组装发件人与信件载荷
     const from =
       options.from ||
       this.smtpConfig?.from ||
@@ -78,7 +91,7 @@ export class SmtpService {
       subject: options.subject,
       text: options.text,
       html: options.html,
-      attachments: options.attachments,
+      attachments: safeAttachments,
       inReplyTo: options.inReplyTo,
       references: options.references,
     };

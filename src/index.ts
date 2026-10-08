@@ -41,7 +41,7 @@ async function main(): Promise<void> {
 
   // 4. 根据模式启动通信监听
   if (transportMode === "sse") {
-    let sseTransport: SSEServerTransport | null = null;
+    const sessions = new Map<string, SSEServerTransport>();
 
     const httpServer = http.createServer(async (req, res) => {
       const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -57,18 +57,38 @@ async function main(): Promise<void> {
       }
 
       if (url.pathname === "/sse") {
-        sseTransport = new SSEServerTransport("/messages", res);
-        await server.connect(sseTransport);
-        console.error("[MCP Email Server] SSE 传输连接已建立");
+        const transport = new SSEServerTransport("/messages", res);
+        sessions.set(transport.sessionId, transport);
+
+        res.on("close", () => {
+          sessions.delete(transport.sessionId);
+          console.error(`[MCP Email Server] SSE 会话已断开: ${transport.sessionId}`);
+        });
+
+        await server.connect(transport);
+        console.error(`[MCP Email Server] SSE 传输连接已建立: ${transport.sessionId}`);
       } else if (url.pathname === "/messages" && req.method === "POST") {
-        if (sseTransport) {
-          await sseTransport.handlePostMessage(req, res);
+        const sessionId = url.searchParams.get("sessionId");
+        const transport = sessionId
+          ? sessions.get(sessionId)
+          : sessions.values().next().value || null;
+
+        if (transport) {
+          await transport.handlePostMessage(req, res);
         } else {
-          res.writeHead(400).end("SSE 传输会话尚未建立");
+          res
+            .writeHead(400, { "Content-Type": "text/plain; charset=utf-8" })
+            .end("无效或未找到对应的 SSE 传输会话");
         }
       } else if (url.pathname === "/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: "ok", timestamp: new Date().toISOString() }));
+        res.end(
+          JSON.stringify({
+            status: "ok",
+            activeSessions: sessions.size,
+            timestamp: new Date().toISOString(),
+          })
+        );
       } else {
         res.writeHead(404).end("Not Found");
       }

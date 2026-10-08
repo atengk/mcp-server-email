@@ -62,23 +62,26 @@ export function sanitizeFileName(rawName: string): string {
  * @param rawFileName 原始文件名
  * @param content 二进制内容 Buffer 或 Uint8Array
  * @param customSandboxDir 可选的自定义沙箱目录（供测试与特定场景注入）
+ * @param uid 可选的邮件 UID 标识，用于按邮件分层子目录隔离防同名覆盖
  * @returns 落盘结果信息，包含物理绝对路径与 file:/// 直达 URI
  * @throws Error 当目标路径试图越界逃逸沙箱根目录时
  */
 export async function saveAttachmentToSandbox(
   rawFileName: string,
   content: Buffer | Uint8Array,
-  customSandboxDir?: string
+  customSandboxDir?: string,
+  uid?: number | string
 ): Promise<{ filePath: string; fileUrl: string; filename: string; size: number }> {
   // 1. 解析沙箱绝对根路径并确保目录存在
   const sandboxDir = path.resolve(customSandboxDir || getAttachmentSandboxDir());
-  await fs.mkdir(sandboxDir, { recursive: true });
+  const targetDir = uid !== undefined ? path.join(sandboxDir, String(uid)) : sandboxDir;
+  await fs.mkdir(targetDir, { recursive: true });
 
   // 2. 净化文件名
   const safeFileName = sanitizeFileName(rawFileName);
 
   // 3. 构建物理目标路径并进行沙箱边界双重校验
-  const targetPath = path.resolve(sandboxDir, safeFileName);
+  const targetPath = path.resolve(targetDir, safeFileName);
   const relative = path.relative(sandboxDir, targetPath);
 
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
@@ -97,4 +100,61 @@ export async function saveAttachmentToSandbox(
     filename: safeFileName,
     size: content.byteLength,
   };
+}
+
+/**
+ * 校验待外发本地附件路径的安全性，防止敏感文件外发泄露
+ *
+ * 严格限制仅允许读取受管沙箱目录 (MCP_ATTACHMENT_DIR) 或当前工作区目录下的文件，
+ * 严禁越界读取操作系统敏感文件（如 /etc/passwd、id_rsa）及环境变量配置文件 (.env*)。
+ *
+ * @param candidatePath 候选本地文件路径
+ * @returns 规整后的绝对物理路径
+ * @throws Error 当路径非法、不存在或超出安全白名单范围时
+ */
+export function validateOutboundAttachmentPath(candidatePath: string): string {
+  if (!candidatePath || typeof candidatePath !== "string") {
+    throw new Error("附件路径必须为有效的非空字符串");
+  }
+
+  // 1. 拦截空字节注入
+  if (candidatePath.includes("\0")) {
+    throw new Error("非法附件路径：检测到空字节注入");
+  }
+
+  const resolvedPath = path.resolve(candidatePath);
+  const baseName = path.basename(resolvedPath).toLowerCase();
+
+  // 2. 严格拦截关键敏感凭据与配置文件
+  if (
+    baseName.startsWith(".env") ||
+    baseName === "id_rsa" ||
+    baseName === "id_ed25519" ||
+    baseName.endsWith(".pem") ||
+    baseName.endsWith(".key") ||
+    baseName === "shadow" ||
+    baseName === "passwd" ||
+    baseName === "sam" ||
+    baseName === "system"
+  ) {
+    throw new Error(`安全拦截：严禁外发系统关键敏感凭据文件 "${baseName}"`);
+  }
+
+  // 3. 白名单根目录校验：受管沙箱目录或当前运行工作区目录
+  const sandboxDir = getAttachmentSandboxDir();
+  const cwdDir = process.cwd();
+
+  const relSandbox = path.relative(sandboxDir, resolvedPath);
+  const inSandbox = !relSandbox.startsWith("..") && !path.isAbsolute(relSandbox);
+
+  const relCwd = path.relative(cwdDir, resolvedPath);
+  const inCwd = !relCwd.startsWith("..") && !path.isAbsolute(relCwd);
+
+  if (!inSandbox && !inCwd) {
+    throw new Error(
+      `安全拦截：待外发附件路径 "${candidatePath}" 超出允许的安全目录边界（仅允许当前工作区或沙箱附件目录）`
+    );
+  }
+
+  return resolvedPath;
 }
