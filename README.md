@@ -34,7 +34,7 @@
 
 - 🎯 **13 大核心工具矩阵**：全功能覆盖外发、会话回复、草稿箱人机协同、多维分页检索、状态看板、正文提纯、附件沙箱、状态标记与防灾软删除；
 - ✉️ **纯发信模式原生支持**：若仅需外发邮件，仅需配置 5 个 SMTP 环境变量，零 IMAP 负担，无需开启收信权限，安全轻量；
-- 👥 **多邮箱灵活扩展**：天然适配客户端原生多实例声明（`email`、`email2`），亦支持单实例内通过 `MCP_ACCOUNTS`（JSON）聚合路由；
+- 👥 **多邮箱灵活扩展**：天然适配客户端原生多实例声明（如 `email-personal`、`email-work`），亦支持单实例内通过 `MCP_ACCOUNTS`（JSON）聚合路由；
 - 🧵 **RFC 会话线程（Threading）保持**：专属 `reply_email` 工具自动读取原信 Message-ID，注入 `In-Reply-To` 与 `References` 邮件头，在各类邮件客户端中维持原生树状会话折叠；
 - 🛡️ **三位一体安全与防灾隔离**：
   - **凭据零泄露**：密码完全封存于环境层，Tool 入参及返回值绝不暴露敏感密钥；
@@ -104,12 +104,12 @@
 
 ### 场景三：配置多个邮箱实例（推荐：客户端原生多实例）
 
-如果您有多个邮箱（例如个人 QQ 邮箱与公司工作邮箱），**最推荐、最直观的做法**是直接在客户端的 `mcpServers` 下声明多个独立服务（如 `email` 与 `email2`，或 `email-personal` 与 `email-work`），每个服务各自指定独立的环境变量：
+如果您有多个邮箱（例如个人 QQ 邮箱与公司工作邮箱），**最推荐、最直观的做法**是直接在客户端的 `mcpServers` 下声明多个独立服务（如 `email-personal` 与 `email-work`），每个服务各自指定独立的环境变量：
 
 ```json
 {
   "mcpServers": {
-    "email": {
+    "email-personal": {
       "command": "npx",
       "args": ["-y", "@atengk/mcp-server-email"],
       "env": {
@@ -121,7 +121,7 @@
         "MCP_SMTP_FROM": "个人助理 <personal@qq.com>"
       }
     },
-    "email2": {
+    "email-work": {
       "command": "npx",
       "args": ["-y", "@atengk/mcp-server-email"],
       "env": {
