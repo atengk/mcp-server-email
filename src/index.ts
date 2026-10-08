@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   // 1. 初始化 MCP 服务端实例
   const server = new McpServer({
     name: "mcp-server-email",
-    version: "1.0.0",
+    version: "1.0.1",
   });
 
   // 2. 注册邮件交互工具

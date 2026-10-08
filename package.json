@@ -1,6 +1,6 @@
 {
   "name": "@atengk/mcp-server-email",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "生产级 Email Model Context Protocol (MCP) 服务端，支持 SMTP 邮件外发、IMAP 邮箱检索与附件处理，提供 Stdio 与 SSE 双模传输",
   "type": "module",
   "publishConfig": {
