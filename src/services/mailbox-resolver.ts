@@ -198,3 +198,77 @@ export async function buildRawMimeMessage(
   const info = await transport.sendMail(mailOptions);
   return info.message as Buffer;
 }
+
+/**
+ * 净化邮件正文文本并提取 150 字符 Preview 预览摘要
+ *
+ * @param raw 原始正文文本或 HTML 字符串或 Buffer
+ * @param maxLength 最大摘要字数（默认 150 字符）
+ * @returns 净化后的纯文本预览摘要
+ */
+export function extractPreviewSnippet(
+  raw: string | Buffer | undefined,
+  maxLength = 150
+): string {
+  if (!raw) return "";
+  let text = typeof raw === "string" ? raw : raw.toString("utf-8");
+
+  // 1. 去除 style 与 script 标签及其内部脚本/样式内容
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+
+  // 2. 去除所有 HTML 结构标签
+  text = text.replace(/<[^>]+>/g, " ");
+
+  // 3. 常见 HTML 实体字符还原解码
+  text = text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+
+  // 4. 压缩换行与多余空白符，保证 Preview 纯净单行紧凑
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= maxLength) {
+    return cleaned;
+  }
+  return cleaned.slice(0, maxLength) + "...";
+}
+
+/**
+ * 从 IMAP fetch 的 bodyParts 集合或 raw source 提取正文文本内容
+ *
+ * @param bodyParts 可选的 Map 形式的 bodyParts
+ * @param source 可选的 raw source Buffer
+ * @returns 提取的文本字符串
+ */
+export function parseBodyFromRawOrParts(
+  bodyParts?: Map<string, Buffer>,
+  source?: Buffer
+): string {
+  // 1. 优先尝试从 bodyParts 获取 TEXT 或第一正文分块
+  if (bodyParts) {
+    const textPart = bodyParts.get("TEXT") || bodyParts.get("1");
+    if (textPart) {
+      return textPart.toString("utf-8");
+    }
+  }
+
+  // 2. 回退从 source 剥离邮件头提取正文前缀
+  if (source) {
+    const raw = source.toString("utf-8");
+    const headerSplit = raw.indexOf("\r\n\r\n");
+    if (headerSplit !== -1) {
+      return raw.slice(headerSplit + 4);
+    }
+    const lfSplit = raw.indexOf("\n\n");
+    if (lfSplit !== -1) {
+      return raw.slice(lfSplit + 2);
+    }
+  }
+
+  return "";
+}
+

@@ -11,10 +11,20 @@ import type {
   EmailDetail,
   EmailSummary,
   ImapConfig,
+  MailboxStatus,
+  MailboxStatusReport,
   SearchEmailFilter,
+  SearchEmailsResult,
   SendEmailOptions,
 } from "../types/index.js";
-import { buildRawMimeMessage, resolveSpecialMailbox } from "./mailbox-resolver.js";
+import {
+  buildRawMimeMessage,
+  extractPreviewSnippet,
+  parseBodyFromRawOrParts,
+  resolveSpecialMailbox,
+} from "./mailbox-resolver.js";
+
+
 
 /**
  * IMAP 邮件存储交互服务
@@ -74,24 +84,36 @@ export class ImapService {
    * 检索符合条件的邮件摘要列表
    *
    * @param filter 检索与过滤条件
-   * @returns 匹配的邮件摘要列表，无结果时返回空集合
+   * @returns 分页检索结果与条目摘要
    */
-  async searchEmails(filter: SearchEmailFilter): Promise<EmailSummary[]> {
+  async searchEmails(filter: SearchEmailFilter): Promise<SearchEmailsResult> {
     const client = this.createClient();
     await client.connect();
 
-    const targetMailbox = filter.mailbox || "INBOX";
-
     try {
+      // 1. 获取物理邮箱列表并解析逻辑别名
+      const allMailboxes = await client.list();
+      const targetMailbox = resolveSpecialMailbox(filter.mailbox || "INBOX", allMailboxes);
+
       const lock = await client.getMailboxLock(targetMailbox);
       try {
+        // 2. 组装 IMAP 查询条件字典
         const query: Record<string, unknown> = {};
 
+        if (filter.query) {
+          query.body = filter.query;
+        }
         if (filter.unseenOnly) {
           query.seen = false;
         }
+        if (filter.flaggedOnly) {
+          query.flagged = true;
+        }
         if (filter.from) {
           query.from = filter.from;
+        }
+        if (filter.to) {
+          query.to = filter.to;
         }
         if (filter.subject) {
           query.subject = filter.subject;
@@ -99,50 +121,93 @@ export class ImapService {
         if (filter.since) {
           query.since = new Date(filter.since);
         }
+        if (filter.before) {
+          query.before = new Date(filter.before);
+        }
 
-        const limit = filter.limit && filter.limit > 0 ? filter.limit : 10;
-        const results: EmailSummary[] = [];
-
-        // 默认若没有任何过滤条件，则按全部查询
         const searchCriteria = Object.keys(query).length > 0 ? query : { all: true };
-        const uids = await client.search(searchCriteria, { uid: true });
+        const searchResult = await client.search(searchCriteria, { uid: true });
+        const uids: number[] = Array.isArray(searchResult) ? searchResult : [];
 
-        if (!uids || uids.length === 0) {
-          return [];
+        const total = uids.length;
+        const page = filter.page && filter.page > 0 ? filter.page : 1;
+        const limit = filter.limit && filter.limit > 0 ? filter.limit : 10;
+
+        if (total === 0) {
+          return {
+            items: [],
+            total: 0,
+            page,
+            limit,
+            hasMore: false,
+          };
         }
 
-        // 取最新的 limit 封邮件 (逆序切片)
-        const selectedUids = uids.slice(-limit).reverse();
+        // 3. 计算分页切片 (按 UID 逆序排，最新邮件优先)
+        const sortedUids = [...uids].reverse();
+        const startIndex = (page - 1) * limit;
+        const selectedUids = sortedUids.slice(startIndex, startIndex + limit);
+        const hasMore = startIndex + limit < total;
 
-        for await (const message of client.fetch(selectedUids, {
-          envelope: true,
-          flags: true,
-          internalDate: true,
-          uid: true,
-          bodyStructure: true,
-        })) {
-          const fromAddr = message.envelope?.from?.[0]
-            ? `${message.envelope.from[0].name || ""} <${message.envelope.from[0].address || ""}>`.trim()
-            : "未知发件人";
+        const items: EmailSummary[] = [];
 
-          results.push({
-            uid: message.uid,
-            seq: message.seq,
-            from: fromAddr,
-            subject: message.envelope?.subject || "(无主题)",
-            date: message.envelope?.date?.toISOString() || new Date().toISOString(),
-            unseen: !message.flags?.has("\\Seen"),
-            hasAttachments: Boolean(message.bodyStructure?.childNodes && message.bodyStructure.childNodes.length > 1),
-          });
+        if (selectedUids.length > 0) {
+          for await (const message of client.fetch(selectedUids, {
+            envelope: true,
+            flags: true,
+            internalDate: true,
+            uid: true,
+            bodyStructure: true,
+            bodyParts: ["TEXT", "1"],
+            source: { maxLength: 2048 },
+          })) {
+            const hasAttachments = Boolean(
+              message.bodyStructure?.childNodes &&
+                message.bodyStructure.childNodes.length > 1
+            );
+
+            if (
+              filter.hasAttachment !== undefined &&
+              hasAttachments !== filter.hasAttachment
+            ) {
+              continue;
+            }
+
+            const fromAddr = message.envelope?.from?.[0]
+              ? `${message.envelope.from[0].name || ""} <${message.envelope.from[0].address || ""}>`.trim()
+              : "未知发件人";
+
+            // 提取正文并清洗为 150 字符 Preview 摘要
+            const rawBody = parseBodyFromRawOrParts(message.bodyParts, message.source);
+            const preview = extractPreviewSnippet(rawBody, 150);
+
+            items.push({
+              uid: message.uid,
+              seq: message.seq,
+              from: fromAddr,
+              subject: message.envelope?.subject || "(无主题)",
+              date: message.envelope?.date?.toISOString() || new Date().toISOString(),
+              unseen: !message.flags?.has("\\Seen"),
+              hasAttachments,
+              preview,
+            });
+          }
         }
 
-        return results;
+        return {
+          items,
+          total,
+          page,
+          limit,
+          hasMore,
+        };
       } finally {
         lock.release();
       }
     } finally {
       await client.logout().catch(() => {});
     }
+
   }
 
   /**
@@ -270,7 +335,85 @@ export class ImapService {
       await client.logout().catch(() => {});
     }
   }
+
+  /**
+   * 极速获取邮箱文件夹状态与未读统计看板
+   *
+   * @param mailboxAlias 可选指定文件夹别名或物理路径，缺省时查询全部可用文件夹
+   * @returns 邮箱状态看板概览报告
+   */
+  async getMailboxStatus(mailboxAlias?: string): Promise<MailboxStatusReport> {
+    const client = this.createClient();
+    await client.connect();
+
+    try {
+      const allMailboxes = await client.list();
+
+      // 1. 如果指定了具体文件夹（如 "INBOX", "drafts" 等），解析别名并只查该文件夹
+      if (mailboxAlias && mailboxAlias.toUpperCase() !== "ALL") {
+        const resolvedPath = resolveSpecialMailbox(mailboxAlias, allMailboxes);
+        const status = await client.status(resolvedPath, {
+          messages: true,
+          unseen: true,
+          recent: true,
+        });
+
+        const item: MailboxStatus = {
+          mailbox: resolvedPath,
+          total: status.messages || 0,
+          unseen: status.unseen || 0,
+          recent: status.recent || 0,
+        };
+
+        return {
+          mailboxes: [item],
+          totalUnseen: item.unseen,
+          totalMessages: item.total,
+        };
+      }
+
+      // 2. 缺省或 ALL 时，遍历统计所有物理邮箱
+      const items: MailboxStatus[] = [];
+      let totalUnseen = 0;
+      let totalMessages = 0;
+
+      for (const box of allMailboxes) {
+        try {
+          const status = await client.status(box.path, {
+            messages: true,
+            unseen: true,
+            recent: true,
+          });
+
+          const unseen = status.unseen || 0;
+          const total = status.messages || 0;
+          const recent = status.recent || 0;
+
+          items.push({
+            mailbox: box.path,
+            total,
+            unseen,
+            recent,
+          });
+
+          totalUnseen += unseen;
+          totalMessages += total;
+        } catch {
+          // 部分特殊目录可能不支持 STATUS，静默跳过
+        }
+      }
+
+      return {
+        mailboxes: items,
+        totalUnseen,
+        totalMessages,
+      };
+    } finally {
+      await client.logout().catch(() => {});
+    }
+  }
 }
 
 export const imapService = new ImapService();
+
 

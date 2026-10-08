@@ -105,19 +105,74 @@ export interface EmailDetail {
  * 邮件检索过滤条件
  */
 export interface SearchEmailFilter {
-  /** 邮箱文件夹（默认 INBOX） */
+  /** 邮箱文件夹（支持别名如 inbox, drafts, trash 或物理路径，默认 INBOX） */
   mailbox?: string;
-  /** 发件人包含关键字 */
+  /** 全文检索关键字（匹配发件人、主题或正文） */
+  query?: string;
+  /** 发件人包含关键字或地址 */
   from?: string;
+  /** 收件人包含关键字或地址 */
+  to?: string;
   /** 主题包含关键字 */
   subject?: string;
   /** 仅查询未读邮件 */
   unseenOnly?: boolean;
+  /** 仅查询星标/置顶邮件 */
+  flaggedOnly?: boolean;
+  /** 是否必须包含附件 */
+  hasAttachment?: boolean;
   /** 起始日期 (YYYY-MM-DD) */
   since?: string;
+  /** 截止日期 (YYYY-MM-DD) */
+  before?: string;
+  /** 当前页码（从 1 开始，默认 1） */
+  page?: number;
   /** 最大返回数量（默认 10） */
   limit?: number;
 }
+
+/**
+ * 邮件多维检索分页结果
+ */
+export interface SearchEmailsResult {
+  /** 当前页邮件摘要列表 */
+  items: EmailSummary[];
+  /** 匹配的总记录数 */
+  total: number;
+  /** 当前页码 */
+  page: number;
+  /** 每页大小限制 */
+  limit: number;
+  /** 是否存在更多后续分页数据 */
+  hasMore: boolean;
+}
+
+/**
+ * 单个邮箱文件夹状态指标
+ */
+export interface MailboxStatus {
+  /** 物理邮箱文件夹路径 */
+  mailbox: string;
+  /** 邮件总数 */
+  total: number;
+  /** 未读邮件数 */
+  unseen: number;
+  /** 最近邮件数 */
+  recent: number;
+}
+
+/**
+ * 邮箱状态看板概览报告
+ */
+export interface MailboxStatusReport {
+  /** 各文件夹状态明细列表 */
+  mailboxes: MailboxStatus[];
+  /** 统计范围内未读邮件总数 */
+  totalUnseen: number;
+  /** 统计范围内邮件总数 */
+  totalMessages: number;
+}
+
 
 /**
  * SMTP 账户配置

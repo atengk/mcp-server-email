@@ -250,28 +250,79 @@ export function registerEmailTools(server: McpServer): void {
     }
   );
 
-  // 6. 检索邮件列表工具
+  // 6. 极速状态看板工具
   server.tool(
-    "search_emails",
-    "在邮箱中按过滤条件检索邮件，返回摘要列表",
+    "get_mailbox_status",
+    "极速获取指定或全部邮箱文件夹的状态看板（包含总邮件数、未读邮件数与最近邮件数），毫秒级响应",
     {
-      account: z.string().optional().describe("收信邮箱账户画像标识，缺省时使用默认账户"),
-      mailbox: z.string().optional().default("INBOX").describe("邮箱文件夹名称，默认为 INBOX"),
-      from: z.string().optional().describe("按发件人地址或关键字筛选"),
-      subject: z.string().optional().describe("按邮件主题关键字筛选"),
-      unseenOnly: z.boolean().optional().default(false).describe("是否仅查询未读邮件"),
-      since: z.string().optional().describe("起始日期筛选，格式如 YYYY-MM-DD"),
-      limit: z.number().optional().default(10).describe("最大拉取条数，默认 10"),
+      account: z.string().optional().describe("邮箱账户画像标识，缺省时使用默认账户"),
+      mailbox: z
+        .string()
+        .optional()
+        .describe(
+          "目标邮箱文件夹别名或物理路径（如 inbox, drafts, trash 或 INBOX），缺省时统计全部可用文件夹"
+        ),
     },
     async (args) => {
       try {
         const imapService = accountManager.getImapService(args.account);
-        const list = await imapService.searchEmails({
+        const report = await imapService.getMailboxStatus(args.mailbox);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(report, null, 2),
+            },
+          ],
+        };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          isError: true,
+          content: [{ type: "text", text: `获取邮箱状态失败: ${message}` }],
+        };
+      }
+    }
+  );
+
+  // 7. 检索邮件列表工具 (多维复合检索与分页)
+  server.tool(
+    "search_emails",
+    "在邮箱中按多维条件检索邮件，返回包含 150 字符 Preview 纯文本摘要的分页列表",
+    {
+      account: z.string().optional().describe("收信邮箱账户画像标识，缺省时使用默认账户"),
+      mailbox: z
+        .string()
+        .optional()
+        .default("INBOX")
+        .describe("邮箱文件夹名称或别名（如 inbox, drafts, trash），默认为 INBOX"),
+      query: z.string().optional().describe("全文检索关键字（匹配发件人、主题或正文）"),
+      from: z.string().optional().describe("按发件人地址或关键字筛选"),
+      to: z.string().optional().describe("按收件人地址或关键字筛选"),
+      subject: z.string().optional().describe("按邮件主题关键字筛选"),
+      unseenOnly: z.boolean().optional().default(false).describe("是否仅查询未读邮件"),
+      flaggedOnly: z.boolean().optional().default(false).describe("是否仅查询星标/置顶邮件"),
+      hasAttachment: z.boolean().optional().describe("是否必须包含附件"),
+      since: z.string().optional().describe("起始日期筛选，格式如 YYYY-MM-DD"),
+      before: z.string().optional().describe("截止日期筛选，格式如 YYYY-MM-DD"),
+      page: z.number().optional().default(1).describe("当前页码，从 1 开始，默认 1"),
+      limit: z.number().optional().default(10).describe("每页拉取条数，默认 10"),
+    },
+    async (args) => {
+      try {
+        const imapService = accountManager.getImapService(args.account);
+        const result = await imapService.searchEmails({
           mailbox: args.mailbox,
+          query: args.query,
           from: args.from,
+          to: args.to,
           subject: args.subject,
           unseenOnly: args.unseenOnly,
+          flaggedOnly: args.flaggedOnly,
+          hasAttachment: args.hasAttachment,
           since: args.since,
+          before: args.before,
+          page: args.page,
           limit: args.limit,
         });
 
@@ -279,7 +330,7 @@ export function registerEmailTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: JSON.stringify(list, null, 2),
+              text: JSON.stringify(result, null, 2),
             },
           ],
         };
@@ -292,6 +343,7 @@ export function registerEmailTools(server: McpServer): void {
       }
     }
   );
+
 
   // 7. 获取邮件正文及附件详情工具
   server.tool(
