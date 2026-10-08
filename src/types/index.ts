@@ -266,6 +266,15 @@ export interface SanitizedAccountProfile {
   email?: string;
   /** 是否为当前默认账户 */
   isDefault: boolean;
+  /** 账户运行模式：full（收发一体）| send_only（纯发信模式）| receive_only（纯收信模式） */
+  mode: "full" | "send_only" | "receive_only";
+  /** 账户功能支持能力特性 */
+  capabilities: {
+    /** 是否支持通过 SMTP 外发邮件 */
+    canSend: boolean;
+    /** 是否支持通过 IMAP 检索与查收邮件 */
+    canReceive: boolean;
+  };
   /** SMTP 脱敏配置 */
   smtp?: {
     host: string;
@@ -311,6 +320,8 @@ export interface ConnectionVerifyReport {
   imap: ServiceCheckResult;
   /** 综合是否完全成功 */
   overallSuccess: boolean;
+  /** 综合诊断汇总说明提示（包含当前运行模式与服务就绪状态） */
+  message?: string;
 }
 
 /**

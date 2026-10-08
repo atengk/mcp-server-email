@@ -33,7 +33,8 @@
 ## ✨ 核心特性
 
 - 🎯 **13 大核心工具矩阵**：全功能覆盖外发、会话回复、草稿箱人机协同、多维分页检索、状态看板、正文提纯、附件沙箱、状态标记与防灾软删除；
-- 👥 **原生多账户并发路由**：支持在单服务实例中通过 `MCP_ACCOUNTS`（JSON）或 `MCP_ACCOUNTS_FILE` 配置多个邮箱画像（如 `work`、`personal`），工具层自动按 `account` 参数动态分发并支持默认账户平滑回退；
+- ✉️ **纯发信模式原生支持**：若仅需外发邮件，仅需配置 5 个 SMTP 环境变量，零 IMAP 负担，无需开启收信权限，安全轻量；
+- 👥 **多邮箱灵活扩展**：天然适配客户端原生多实例声明（`email`、`email2`），亦支持单实例内通过 `MCP_ACCOUNTS`（JSON）聚合路由；
 - 🧵 **RFC 会话线程（Threading）保持**：专属 `reply_email` 工具自动读取原信 Message-ID，注入 `In-Reply-To` 与 `References` 邮件头，在各类邮件客户端中维持原生树状会话折叠；
 - 🛡️ **三位一体安全与防灾隔离**：
   - **凭据零泄露**：密码完全封存于环境层，Tool 入参及返回值绝不暴露敏感密钥；
@@ -45,15 +46,37 @@
 
 ---
 
-## 🛠️ 主流 MCP 客户端集成指引
+## 🛠️ 通用 MCP 客户端配置
 
-### 1. Claude Desktop
+本项目完全符合标准化 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 规范。所有支持 MCP 的客户端（包括 Claude Desktop、Cursor、Cline、Windsurf、Cherry Studio 等）均采用标准 JSON 语法在客户端配置文件中的 `mcpServers` 节点声明。
 
-根据操作系统打开配置文件：
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+### 场景一：极简仅发送邮件（纯 SMTP，零 IMAP 负担）
 
-在 `mcpServers` 中添加配置：
+> 💡 **如果只想发送邮件？**  
+> 仅需配置 5 个 `MCP_SMTP_*` 环境变量即可！无需配置任何 IMAP 账号与密码，无需开通收信权限，安全且开箱即用。适用于自动化报告、监控告警、周报外发等纯发信场景。
+
+```json
+{
+  "mcpServers": {
+    "email": {
+      "command": "npx",
+      "args": ["-y", "@atengk/mcp-server-email"],
+      "env": {
+        "MCP_SMTP_HOST": "smtp.qq.com",
+        "MCP_SMTP_PORT": "465",
+        "MCP_SMTP_SECURE": "true",
+        "MCP_SMTP_USER": "your_email@qq.com",
+        "MCP_SMTP_PASS": "YOUR_AUTHORIZATION_CODE",
+        "MCP_SMTP_FROM": "AI 助理 <your_email@qq.com>"
+      }
+    }
+  }
+}
+```
+
+### 场景二：全功能收发一体（SMTP + IMAP）
+
+同时配置发信通道（SMTP）与查收通道（IMAP），解锁全部 13 大工具矩阵（包括全文检索、正文提纯、会话回复、草稿审查、附件沙箱与标记归类）：
 
 ```json
 {
@@ -79,17 +102,9 @@
 }
 ```
 
-### 2. Cursor
+### 场景三：配置多个邮箱实例（推荐：客户端原生多实例）
 
-在 Cursor 中依次打开 **Settings -> Features -> MCP Servers -> Add New MCP Server**：
-- **Name**: `email`
-- **Type**: `command`
-- **Command**: `npx -y @atengk/mcp-server-email`
-- 在环境变量面板中添加 `MCP_SMTP_*` 与 `MCP_IMAP_*` 凭据配置。
-
-### 3. Cline (VS Code 扩展)
-
-在 Cline 的 MCP 设置页面（或编辑 `cline_mcp_settings.json`）添加：
+如果您有多个邮箱（例如个人 QQ 邮箱与公司工作邮箱），**最推荐、最直观的做法**是直接在客户端的 `mcpServers` 下声明多个独立服务（如 `email` 与 `email2`，或 `email-personal` 与 `email-work`），每个服务各自指定独立的环境变量：
 
 ```json
 {
@@ -98,108 +113,37 @@
       "command": "npx",
       "args": ["-y", "@atengk/mcp-server-email"],
       "env": {
-        "MCP_SMTP_HOST": "smtp.163.com",
+        "MCP_SMTP_HOST": "smtp.qq.com",
         "MCP_SMTP_PORT": "465",
         "MCP_SMTP_SECURE": "true",
-        "MCP_SMTP_USER": "your_email@163.com",
-        "MCP_SMTP_PASS": "YOUR_AUTH_CODE",
-        "MCP_IMAP_HOST": "imap.163.com",
+        "MCP_SMTP_USER": "personal@qq.com",
+        "MCP_SMTP_PASS": "YOUR_QQ_AUTH_CODE",
+        "MCP_SMTP_FROM": "个人助理 <personal@qq.com>"
+      }
+    },
+    "email2": {
+      "command": "npx",
+      "args": ["-y", "@atengk/mcp-server-email"],
+      "env": {
+        "MCP_SMTP_HOST": "smtp.office365.com",
+        "MCP_SMTP_PORT": "587",
+        "MCP_SMTP_SECURE": "false",
+        "MCP_SMTP_USER": "work@company.com",
+        "MCP_SMTP_PASS": "YOUR_WORK_PASS",
+        "MCP_SMTP_FROM": "工作助理 <work@company.com>",
+        "MCP_IMAP_HOST": "outlook.office365.com",
         "MCP_IMAP_PORT": "993",
         "MCP_IMAP_SECURE": "true",
-        "MCP_IMAP_USER": "your_email@163.com",
-        "MCP_IMAP_PASS": "YOUR_AUTH_CODE"
+        "MCP_IMAP_USER": "work@company.com",
+        "MCP_IMAP_PASS": "YOUR_WORK_PASS"
       }
     }
   }
 }
 ```
 
-### 4. Windsurf (Cascade)
-
-在 `~/.codeium/windsurf/mcp_config.json` 中配置：
-
-```json
-{
-  "mcpServers": {
-    "email": {
-      "command": "npx",
-      "args": ["-y", "@atengk/mcp-server-email"],
-      "env": {
-        "MCP_DEFAULT_ACCOUNT": "work",
-        "MCP_ACCOUNTS_FILE": "/Users/username/.config/mcp-email/accounts.json"
-      }
-    }
-  }
-}
-```
-
----
-
-## 👥 多账户配置模式 (Multi-Account)
-
-当您拥有多个邮箱（如个人 QQ 邮箱与公司 Office 365 邮箱）时，可使用以下两种多账户配置方式：
-
-### 方式 1：环境变量 JSON 字符串 (`MCP_ACCOUNTS`)
-
-```json
-{
-  "mcpServers": {
-    "email": {
-      "command": "npx",
-      "args": ["-y", "@atengk/mcp-server-email"],
-      "env": {
-        "MCP_DEFAULT_ACCOUNT": "work",
-        "MCP_ACCOUNTS": "{\"personal\":{\"smtp\":{\"host\":\"smtp.qq.com\",\"port\":465,\"secure\":true,\"user\":\"me@qq.com\",\"pass\":\"YOUR_QQ_AUTH_CODE\"},\"imap\":{\"host\":\"imap.qq.com\",\"port\":993,\"secure\":true,\"user\":\"me@qq.com\",\"pass\":\"YOUR_QQ_AUTH_CODE\"}},\"work\":{\"smtp\":{\"host\":\"smtp.office365.com\",\"port\":587,\"secure\":false,\"user\":\"me@company.com\",\"pass\":\"YOUR_WORK_PASS\"},\"imap\":{\"host\":\"outlook.office365.com\",\"port\":993,\"secure\":true,\"user\":\"me@company.com\",\"pass\":\"YOUR_WORK_PASS\"}}}"
-      }
-    }
-  }
-}
-```
-
-### 方式 2：外部配置文件路径 (`MCP_ACCOUNTS_FILE`)
-
-指向本地的一个标准 JSON 文件（参考 [`examples/accounts.example.json`](./examples/accounts.example.json)）：
-
-```json
-{
-  "personal": {
-    "email": "me@qq.com",
-    "smtp": {
-      "host": "smtp.qq.com",
-      "port": 465,
-      "secure": true,
-      "user": "me@qq.com",
-      "pass": "YOUR_QQ_AUTH_CODE",
-      "from": "个人助手 <me@qq.com>"
-    },
-    "imap": {
-      "host": "imap.qq.com",
-      "port": 993,
-      "secure": true,
-      "user": "me@qq.com",
-      "pass": "YOUR_QQ_AUTH_CODE"
-    }
-  },
-  "work": {
-    "email": "me@company.com",
-    "smtp": {
-      "host": "smtp.office365.com",
-      "port": 587,
-      "secure": false,
-      "user": "me@company.com",
-      "pass": "YOUR_WORK_PASS",
-      "from": "工作助理 <me@company.com>"
-    },
-    "imap": {
-      "host": "outlook.office365.com",
-      "port": 993,
-      "secure": true,
-      "user": "me@company.com",
-      "pass": "YOUR_WORK_PASS"
-    }
-  }
-}
-```
+> 💡 **进阶选项：单服务内多账户聚合（可选）**  
+> 若您希望在单一服务端进程内同时纳管多个邮箱画像，并通过 Tool 入参中的 `account` 动态路由，也可以使用环境变量 `MCP_ACCOUNTS`（JSON 字符串）或 `MCP_ACCOUNTS_FILE`（指向本地文件，参考 [`examples/accounts.example.json`](./examples/accounts.example.json)）。普通场景优先推荐上述**客户端原生多实例**方式。
 
 ---
 
@@ -209,10 +153,12 @@
 
 ### 1. 账户发现与连通性自检
 
-- **`list_accounts`**：列出当前服务端已注册的所有可用账户画像标识（包含邮箱地址、发信与收信服务器脱敏主机，严禁暴露密码）。
+- **`list_accounts`**：列出当前服务端已注册的所有可用账户画像标识（包含邮箱地址、运行模式 `mode`（full/send_only/receive_only）、收发能力特性 `capabilities` 及服务器脱敏主机，严禁暴露密码）。
   - *入参*：无
-- **`verify_connection`**：一键对指定账户或默认账户发起真实的 SMTP 与 IMAP 握手体检，返回各协议连通性报告。
+- **`verify_connection`**：一键对指定账户或默认账户发起真实的协议握手体检（原生支持全功能与纯发信模式），返回各通道连通性报告与就绪状态说明。
   - *入参*：`account?: string`
+
+> 💡 **纯发信模式说明**：若账户仅配置了 SMTP（纯发信模式），外发工具 `send_email` 与自检工具均正常工作；若智能体误调收信相关工具（如 `search_emails`、`reply_email` 等），服务端会自动返回明确的纯发信模式指引，防止大模型产生幻觉。
 
 ### 2. 外发通信与人机协同
 

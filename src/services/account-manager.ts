@@ -47,11 +47,20 @@ export class AccountManager {
     const result: SanitizedAccountProfile[] = [];
 
     for (const [id, acc] of this.accounts.entries()) {
+      const canSend = Boolean(acc.smtp);
+      const canReceive = Boolean(acc.imap);
+      const mode = canSend && canReceive ? "full" : canSend ? "send_only" : "receive_only";
+
       result.push({
         id,
         name: acc.name,
         email: acc.email || acc.smtp?.user || acc.imap?.user,
         isDefault: id === this.defaultAccountId,
+        mode,
+        capabilities: {
+          canSend,
+          canReceive,
+        },
         smtp: acc.smtp
           ? {
               host: acc.smtp.host,
@@ -109,7 +118,9 @@ export class AccountManager {
   getSmtpService(accountId?: string): SmtpService {
     const account = this.getAccount(accountId);
     if (!account.smtp) {
-      throw new Error(`账户 "${account.id}" 未配置 SMTP 外发服务参数`);
+      throw new Error(
+        `账户 "${account.id}" 未配置 SMTP 外发服务（当前处于纯收信模式）。如需查阅邮件请调用 search_emails 工具；如需外发邮件，请在配置中补充 MCP_SMTP_* 环境变量。`
+      );
     }
 
     let service = this.smtpPool.get(account.id);
@@ -130,7 +141,9 @@ export class AccountManager {
   getImapService(accountId?: string): ImapService {
     const account = this.getAccount(accountId);
     if (!account.imap) {
-      throw new Error(`账户 "${account.id}" 未配置 IMAP 查收服务参数`);
+      throw new Error(
+        `账户 "${account.id}" 未配置 IMAP 查收服务（当前处于纯发信模式）。如需外发邮件请调用 send_email 工具；如需查阅或检索邮件，请在配置中补充 MCP_IMAP_* 环境变量。`
+      );
     }
 
     let service = this.imapPool.get(account.id);
@@ -193,11 +206,36 @@ export class AccountManager {
       (!imapResult.configured || imapResult.success) &&
       (smtpResult.configured || imapResult.configured);
 
+    // 4. 生成人性化综合诊断说明
+    let message: string | undefined;
+    if (overallSuccess) {
+      if (smtpResult.configured && imapResult.configured) {
+        message = "SMTP 与 IMAP 双通道握手与认证体检均通过";
+      } else if (smtpResult.configured) {
+        message = "SMTP 外发通道连通性验证成功（当前账户处于纯发信模式，未配置 IMAP 查收通道）";
+      } else if (imapResult.configured) {
+        message = "IMAP 查收通道连通性验证成功（当前账户处于纯收信模式，未配置 SMTP 外发通道）";
+      }
+    } else {
+      const failures: string[] = [];
+      if (smtpResult.configured && !smtpResult.success) {
+        failures.push(`SMTP 验证失败: ${smtpResult.error || "未知异常"}`);
+      }
+      if (imapResult.configured && !imapResult.success) {
+        failures.push(`IMAP 验证失败: ${imapResult.error || "未知异常"}`);
+      }
+      if (!smtpResult.configured && !imapResult.configured) {
+        failures.push("未配置任何 SMTP 或 IMAP 服务参数");
+      }
+      message = failures.join("; ");
+    }
+
     return {
       account: account.id,
       smtp: smtpResult,
       imap: imapResult,
       overallSuccess,
+      message,
     };
   }
 }

@@ -50,6 +50,11 @@ describe("Account MCP Tools", () => {
         name: "工作邮箱",
         email: "work@company.com",
         isDefault: true,
+        mode: "full",
+        capabilities: {
+          canSend: true,
+          canReceive: true,
+        },
         smtp: {
           host: "smtp.company.com",
           port: 465,
@@ -77,6 +82,8 @@ describe("Account MCP Tools", () => {
     expect(parsed).toHaveLength(1);
     expect(parsed[0].id).toBe("work");
     expect(parsed[0].isDefault).toBe(true);
+    expect(parsed[0].mode).toBe("full");
+    expect(parsed[0].capabilities).toEqual({ canSend: true, canReceive: true });
     expect(parsed[0].smtp.user).toBe("work@company.com");
     // 严格断言：输出中绝无 pass 字段或明文密码
     expect(textContent).not.toContain('"pass"');

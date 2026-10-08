@@ -146,5 +146,58 @@ describe("AccountManager", () => {
       imapSpy.mockRestore();
     }
   });
+
+  it("纯发信模式（仅配置 SMTP）下应正确识别 mode 与 capabilities，且连通体验证成功", async () => {
+    const sendOnlyAccounts: AccountProfile[] = [
+      {
+        id: "sender-bot",
+        name: "发信机器人",
+        email: "bot@example.com",
+        smtp: {
+          host: "smtp.example.com",
+          port: 465,
+          secure: true,
+          user: "bot@example.com",
+          pass: "bot-secret",
+        },
+      },
+    ];
+
+    const manager = new AccountManager(sendOnlyAccounts, "sender-bot");
+    const list = manager.listAccounts();
+
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe("sender-bot");
+    expect(list[0].mode).toBe("send_only");
+    expect(list[0].capabilities).toEqual({
+      canSend: true,
+      canReceive: false,
+    });
+    expect(list[0].smtp).toBeDefined();
+    expect(list[0].imap).toBeUndefined();
+
+    // 纯发信模式下获取 IMAP 服务应抛出清晰指导异常
+    expect(() => manager.getImapService("sender-bot")).toThrowError(
+      /未配置 IMAP 查收服务（当前处于纯发信模式）/
+    );
+
+    // 连通体检在 SMTP 成功时整体应判定为成功
+    const smtpSpy = vi
+      .spyOn(SmtpService.prototype, "verifyConnection")
+      .mockResolvedValue(true);
+
+    try {
+      const report = await manager.verifyConnection("sender-bot");
+      expect(report.account).toBe("sender-bot");
+      expect(report.smtp.configured).toBe(true);
+      expect(report.smtp.success).toBe(true);
+      expect(report.imap.configured).toBe(false);
+      expect(report.overallSuccess).toBe(true);
+      expect(report.message).toContain("当前账户处于纯发信模式，未配置 IMAP 查收通道");
+    } finally {
+      smtpSpy.mockRestore();
+    }
+  });
 });
+
 

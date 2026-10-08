@@ -18,7 +18,7 @@ export function registerEmailTools(server: McpServer): void {
   // 1. 列出可用邮箱账户画像（凭据脱敏）
   server.tool(
     "list_accounts",
-    "列出所有已配置的邮箱账户画像列表（凭据安全脱敏，隐藏密码），包含账户标识、邮箱地址、服务配置与默认账户标记",
+    "列出所有已配置的邮箱账户画像列表（凭据安全脱敏，隐藏密码），包含账户标识、邮箱地址、运行模式（full/send_only/receive_only）、收发能力特性与默认账户标记",
     {},
     async () => {
       try {
@@ -44,7 +44,7 @@ export function registerEmailTools(server: McpServer): void {
   // 2. 连通性自检与凭据体检工具
   server.tool(
     "verify_connection",
-    "验证指定或默认邮箱账户的网络连通性与认证凭据（包括 SMTP 外发和 IMAP 查收通道），返回网络握手与身份认证体检报告",
+    "验证指定或默认邮箱账户的网络连通性与认证凭据（支持全功能或纯发信模式，自动识别 SMTP 与 IMAP），返回网络握手与身份认证综合体检诊断报告",
     {
       account: z.string().optional().describe("邮箱账户画像标识，缺省时体检默认账户"),
     },
